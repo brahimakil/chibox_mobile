@@ -1,0 +1,94 @@
+name: chihelo_frontend
+description: "LuxeMarket - A premium shopping experience"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.1 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Icons
+  cupertino_icons: ^1.0.6
+  iconsax: ^0.0.8
+
+  # State Management
+  provider: ^6.1.2
+
+  # Navigation
+  go_router: ^14.2.0
+
+  # Network & API
+  http: ^1.2.1
+  http_parser: ^4.0.2
+  dio: ^5.4.3+1
+
+  # Storage
+  shared_preferences: ^2.2.3
+
+  # Image Handling
+  cached_network_image: ^3.3.1
+  image_cropper: ^5.0.1
+  flutter_image_compress: ^2.1.0
+
+  # Animations
+  flutter_animate: ^4.5.0
+  shimmer: ^3.0.0
+  video_player: ^2.8.2
+
+  # UI Components
+  smooth_page_indicator: ^1.1.0
+  carousel_slider: ^5.0.0
+  flutter_svg: ^2.0.10+1
+  flutter_staggered_grid_view: ^0.7.0
+
+  # Utilities
+  intl: ^0.19.0
+  equatable: ^2.0.5
+  custom_refresh_indicator: ^4.0.1
+  lottie: ^3.1.3
+  image_picker: ^1.1.2
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  geolocator: ^13.0.2
+  local_auth: ^2.2.0
+  flutter_secure_storage: ^9.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/applogo.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+
+  # Assets
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/animations/
+
+  # Fonts - Plus Jakarta Sans
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Light.ttf
+          weight: 300
+        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
