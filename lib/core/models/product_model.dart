@@ -64,10 +64,48 @@ class Product extends Equatable {
   }
 
   factory Product.fromJson(Map<String, dynamic> json) {
+    // Helper to check if a string contains Chinese characters
+    bool containsChinese(String text) {
+      return RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
+    }
+    
+    // Parse name with fallbacks - only use non-Chinese text
+    String name = '';
+    if (json['product_name'] != null && json['product_name'].toString().trim().isNotEmpty) {
+      final productName = json['product_name'].toString().trim();
+      if (!containsChinese(productName)) {
+        name = productName;
+      }
+    }
+    // Only fallback if name is still empty AND the fallback is non-Chinese
+    if (name.isEmpty && json['name'] != null && json['name'].toString().trim().isNotEmpty) {
+      final fallbackName = json['name'].toString().trim();
+      if (!containsChinese(fallbackName)) {
+        name = fallbackName;
+      }
+    }
+    if (name.isEmpty && json['display_name'] != null && json['display_name'].toString().trim().isNotEmpty) {
+      final fallbackName = json['display_name'].toString().trim();
+      if (!containsChinese(fallbackName)) {
+        name = fallbackName;
+      }
+    }
+    // Skip original_name fallback entirely as it's always Chinese from 1688
+    // If no English name available, name stays empty - ProductCard handles this
+    
+    // Parse display_name (only if non-Chinese)
+    String? displayName;
+    if (json['display_name'] != null && json['display_name'].toString().trim().isNotEmpty) {
+      final dn = json['display_name'].toString().trim();
+      if (!containsChinese(dn)) {
+        displayName = dn;
+      }
+    }
+    
     return Product(
       id: json['id'] as int,
-      name: json['product_name'] ?? json['name'] ?? '',
-      displayName: json['display_name'] as String?,
+      name: name,
+      displayName: displayName,
       description: json['description'] as String?,
       slug: json['slug'] as String?,
       mainImage: ImageHelper.parse(json['main_image']),
@@ -216,6 +254,7 @@ class ProductVariant extends Equatable {
   final int? stock;
   final String? propsIds;
   final String? status;
+  final List<SelectedOption>? selectedOptions;
 
   const ProductVariant({
     required this.id,
@@ -226,6 +265,7 @@ class ProductVariant extends Equatable {
     this.stock,
     this.propsIds,
     this.status,
+    this.selectedOptions,
   });
 
   factory ProductVariant.fromJson(Map<String, dynamic> json) {
@@ -238,6 +278,11 @@ class ProductVariant extends Equatable {
       stock: json['stock'] as int?,
       propsIds: json['props_ids'] as String?,
       status: json['status'] as String?,
+      selectedOptions: json['selected_options'] != null
+          ? (json['selected_options'] as List)
+              .map((o) => SelectedOption.fromJson(o))
+              .toList()
+          : null,
     );
   }
 
@@ -251,11 +296,48 @@ class ProductVariant extends Equatable {
       'stock': stock,
       'props_ids': propsIds,
       'status': status,
+      'selected_options': selectedOptions?.map((o) => o.toJson()).toList(),
     };
   }
 
   @override
-  List<Object?> get props => [id, name, price, sku, propsIds, status];
+  List<Object?> get props => [id, name, price, sku, propsIds, status, selectedOptions];
+}
+
+/// Selected Option for a Variant
+class SelectedOption extends Equatable {
+  final int optionId;
+  final int valueId;
+  final String? valueName;
+  final String? imageUrl;
+
+  const SelectedOption({
+    required this.optionId,
+    required this.valueId,
+    this.valueName,
+    this.imageUrl,
+  });
+
+  factory SelectedOption.fromJson(Map<String, dynamic> json) {
+    return SelectedOption(
+      optionId: json['option_id'] ?? json['r_product_option_id'] ?? 0,
+      valueId: json['value_id'] ?? 0,
+      valueName: json['value_name'] as String?,
+      imageUrl: json['image_url'] != null ? ImageHelper.parse(json['image_url']) : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'option_id': optionId,
+      'value_id': valueId,
+      'value_name': valueName,
+      'image_url': imageUrl,
+    };
+  }
+
+  @override
+  List<Object?> get props => [optionId, valueId, valueName, imageUrl];
 }
 
 /// Product Option Model
@@ -263,12 +345,14 @@ class ProductOption extends Equatable {
   final int id;
   final String? pid; // 1688 Property ID
   final String name;
+  final bool isColor;
   final List<ProductOptionValue> values;
 
   const ProductOption({
     required this.id,
     this.pid,
     required this.name,
+    this.isColor = false,
     required this.values,
   });
 
@@ -277,6 +361,7 @@ class ProductOption extends Equatable {
       id: json['id'] as int,
       pid: json['pid']?.toString(),
       name: json['name'] as String,
+      isColor: json['is_color'] == true || json['is_color'] == 1,
       values: (json['values'] as List)
           .map((v) => ProductOptionValue.fromJson(v))
           .toList(),
@@ -288,12 +373,13 @@ class ProductOption extends Equatable {
       'id': id,
       'pid': pid,
       'name': name,
+      'is_color': isColor,
       'values': values.map((v) => v.toJson()).toList(),
     };
   }
 
   @override
-  List<Object?> get props => [id, pid, name, values];
+  List<Object?> get props => [id, pid, name, isColor, values];
 }
 
 /// Product Option Value Model
@@ -303,6 +389,7 @@ class ProductOptionValue extends Equatable {
   final String name;
   final String? imageUrl;
   final String? color;
+  final bool isColor;
 
   const ProductOptionValue({
     required this.id,
@@ -310,6 +397,7 @@ class ProductOptionValue extends Equatable {
     this.vid,
     this.imageUrl,
     this.color,
+    this.isColor = false,
   });
 
   factory ProductOptionValue.fromJson(Map<String, dynamic> json) {
@@ -319,6 +407,7 @@ class ProductOptionValue extends Equatable {
       vid: json['vid']?.toString(),
       imageUrl: ImageHelper.parse(json['image_url']),
       color: json['color'] as String?,
+      isColor: json['is_color'] == true || json['is_color'] == 1,
     );
   }
 
@@ -329,10 +418,11 @@ class ProductOptionValue extends Equatable {
       'vid': vid,
       'image_url': imageUrl,
       'color': color,
+      'is_color': isColor,
     };
   }
 
   @override
-  List<Object?> get props => [id, vid, name, imageUrl, color];
+  List<Object?> get props => [id, vid, name, imageUrl, color, isColor];
 }
 

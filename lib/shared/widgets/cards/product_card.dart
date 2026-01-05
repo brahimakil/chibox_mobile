@@ -47,10 +47,25 @@ class ProductCard extends StatefulWidget {
 
   // Factory constructor to create from Product model
   factory ProductCard.fromProduct(Product product, {VoidCallback? onTap, VoidCallback? onMenuTap}) {
+    // Helper to check if a string contains Chinese characters
+    bool containsChinese(String text) {
+      return RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
+    }
+    
+    // Get the best available name - only use non-Chinese text
+    String productName = '';
+    if (product.displayName != null && product.displayName!.isNotEmpty && !containsChinese(product.displayName!)) {
+      productName = product.displayName!;
+    } else if (product.name.isNotEmpty && !containsChinese(product.name)) {
+      productName = product.name;
+    }
+    // Don't fall back to originalName as it's always Chinese
+    // If no English name, show empty - the card will handle displaying gracefully
+    
     return ProductCard(
       product: product,
       id: product.id,
-      name: product.displayName ?? product.name,
+      name: productName,
       imageUrl: product.mainImage,
       price: product.price,
       originalPrice: product.originalPrice,
@@ -77,8 +92,12 @@ class _ProductCardState extends State<ProductCard> {
   @override
   void initState() {
     super.initState();
-    _isLiked = widget.isLiked;
     _currentId = widget.id;
+    
+    // Check WishlistHelper cache for the correct like state first
+    // This is the single source of truth for like states
+    final cachedLikeState = WishlistHelper.getLikeState(widget.id);
+    _isLiked = cachedLikeState ?? widget.isLiked;
     
     // Listen for global wishlist updates
     _wishlistSubscription = WishlistHelper.onStatusChanged.listen((update) {
@@ -88,6 +107,7 @@ class _ProductCardState extends State<ProductCard> {
         });
       }
     });
+
 
     // Listen for Cart ID updates (Tampi -> Local swap)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -114,10 +134,18 @@ class _ProductCardState extends State<ProductCard> {
   @override
   void didUpdateWidget(ProductCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isLiked != oldWidget.isLiked) {
-      _isLiked = widget.isLiked;
+    // When widget is updated, check cache first as it's the source of truth
+    if (widget.id != oldWidget.id) {
+      _currentId = widget.id;
+      final cachedLikeState = WishlistHelper.getLikeState(widget.id);
+      _isLiked = cachedLikeState ?? widget.isLiked;
+    } else if (widget.isLiked != oldWidget.isLiked) {
+      // Only use widget.isLiked if cache doesn't have a state
+      final cachedLikeState = WishlistHelper.getLikeState(widget.id);
+      _isLiked = cachedLikeState ?? widget.isLiked;
     }
   }
+
 
   double? get _discount {
     if (widget.originalPrice != null && widget.originalPrice! > widget.price) {
