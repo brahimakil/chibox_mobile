@@ -1,26 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import 'dart:ui';
-import 'dart:math';
+import 'dart:async';
 import '../../../core/theme/theme.dart';
 import '../../../core/models/category_model.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/services/home_service.dart';
+import '../../../core/services/category_service.dart';
 import '../../../core/utils/wishlist_helper.dart';
 import '../../../shared/widgets/cards/product_card.dart';
-import 'dart:async';
 import '../../product/screens/product_details_screen.dart';
 
+/// SHEIN-style Category Products Screen with story-like category circles
 class CategoryProductsScreen extends StatefulWidget {
   final ProductCategory category;
+  final List<ProductCategory>? siblingCategories;
 
   const CategoryProductsScreen({
     super.key,
     required this.category,
+    this.siblingCategories,
   });
 
   @override
@@ -28,10 +31,12 @@ class CategoryProductsScreen extends StatefulWidget {
 }
 
 class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
-  final DraggableScrollableController _sheetController = DraggableScrollableController();
-  double _sheetPosition = 0.6;
+  final ScrollController _scrollController = ScrollController();
+  final ScrollController _categoryScrollController = ScrollController();
+  
   List<Product> _products = [];
   bool _isLoading = false;
+  late ProductCategory _selectedCategory;
   
   // Pagination State
   int _currentPage = 1;
@@ -46,11 +51,16 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   final TextEditingController _maxPriceController = TextEditingController();
   StreamSubscription? _wishlistSubscription;
 
+  // All sibling categories for the story circles
+  List<ProductCategory> _allCategories = [];
+
   @override
   void initState() {
     super.initState();
+    _selectedCategory = widget.category;
     
-    // Listen for global wishlist updates
+    _initializeCategories();
+    
     _wishlistSubscription = WishlistHelper.onStatusChanged.listen((update) {
       if (!mounted) return;
       final index = _products.indexWhere((p) => p.id == update.id);
@@ -61,53 +71,90 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
       }
     });
 
-    _sheetController.addListener(() {
-      if (mounted) {
-        setState(() {
-          _sheetPosition = _sheetController.size;
-        });
-      }
-    });
+    _scrollController.addListener(_onScroll);
+    _fetchProducts(refresh: true);
     
-    // 1. Try to load from local cache first (instant)
-    final loadedFromCache = _loadLocalProducts();
-
-    // 2. Then fetch fresh data from API (background) ONLY if not in cache
-    if (!loadedFromCache) {
-      _fetchProducts(refresh: true);
+    // Listen for HomeService updates (e.g., when product name gets translated)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final homeService = Provider.of<HomeService>(context, listen: false);
+      homeService.addListener(_onHomeServiceUpdate);
+    });
+  }
+  
+  /// Called when HomeService notifies (e.g., product cache updated with translated name)
+  void _onHomeServiceUpdate() {
+    if (!mounted) return;
+    final homeService = Provider.of<HomeService>(context, listen: false);
+    final cachedProducts = homeService.getCachedCategoryProducts(_selectedCategory.id);
+    
+    // Update local products with any changes from cache (e.g., translated names)
+    bool anyUpdated = false;
+    for (int i = 0; i < _products.length; i++) {
+      final cached = cachedProducts.firstWhere(
+        (p) => p.id == _products[i].id,
+        orElse: () => _products[i],
+      );
+      // Check if name changed (translation happened)
+      if (cached.name != _products[i].name && cached.name.isNotEmpty) {
+        _products[i] = _products[i].copyWith(
+          name: cached.name,
+          displayName: cached.displayName,
+        );
+        anyUpdated = true;
+      }
+    }
+    
+    if (anyUpdated) {
+      setState(() {});
+      debugPrint('🔄 Updated products with translated names from cache');
     }
   }
 
-  bool _loadLocalProducts() {
-    final homeService = Provider.of<HomeService>(context, listen: false);
-    
-    // 1. Check specific category cache first (most relevant & fastest)
-    final cached = homeService.getCachedCategoryProducts(widget.category.id);
-    if (cached.isNotEmpty) {
-       setState(() { 
-         _products = cached; 
-         _isLoading = false;
-         // Estimate next page based on cached count (assuming 10 per page)
-         _currentPage = (cached.length / 10).ceil() + 1;
-         _hasMore = true; 
-       });
-       return true;
-    }
-
-    // 2. Fallback to home screen data
-    final localMatches = homeService.allProducts.where((p) => p.categoryId == widget.category.id).toList();
-    
-    if (localMatches.isNotEmpty) {
-      setState(() {
-        _products = localMatches;
-        _isLoading = false;
-      });
-      // Found some matches but not full list, so return false to trigger fetch
-      return false;
+  void _initializeCategories() {
+    if (widget.siblingCategories != null && widget.siblingCategories!.isNotEmpty) {
+      _allCategories = widget.siblingCategories!;
     } else {
-      // If no local matches, show loading
-      setState(() => _isLoading = true);
-      return false;
+      _allCategories = [widget.category];
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadSiblingCategories();
+      });
+    }
+  }
+
+  void _loadSiblingCategories() {
+    final categoryService = Provider.of<CategoryService>(context, listen: false);
+    
+    for (final parent in categoryService.categories) {
+      if (parent.subcategories != null) {
+        final found = parent.subcategories!.any((sub) => sub.id == widget.category.id);
+        if (found) {
+          setState(() {
+            _allCategories = parent.subcategories!;
+          });
+          _scrollToSelectedCategory();
+          break;
+        }
+      }
+    }
+  }
+
+  void _scrollToSelectedCategory() {
+    final selectedIndex = _allCategories.indexWhere((c) => c.id == _selectedCategory.id);
+    if (selectedIndex != -1 && _categoryScrollController.hasClients) {
+      final targetOffset = selectedIndex * 90.0;
+      _categoryScrollController.animateTo(
+        targetOffset.clamp(0.0, _categoryScrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 300) {
+      if (!_isLoadingMore && _hasMore) {
+        _fetchProducts();
+      }
     }
   }
 
@@ -121,16 +168,32 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
 
     final homeService = Provider.of<HomeService>(context, listen: false);
     
+    // Check if we have cached products for instant display (only for first page with default filters)
+    final isDefaultFilters = _sortBy == 'newest' && _minPrice == null && _maxPrice == null;
+    if (refresh && isDefaultFilters) {
+      final cachedProducts = homeService.getCachedCategoryProducts(_selectedCategory.id);
+      if (cachedProducts.isNotEmpty) {
+        setState(() {
+          _products = cachedProducts;
+          _isLoading = false;
+          _hasMore = true; // Assume more pages exist
+        });
+        debugPrint('⚡ Instant load: ${cachedProducts.length} cached products for category ${_selectedCategory.id}');
+        // Fetch fresh data in background
+        _fetchProductsInBackground();
+        return;
+      }
+    }
+    
     try {
-      // Only show full loading if we have absolutely no data or if filtering/refreshing
-      if (refresh && _products.isEmpty) {
+      if (refresh) {
         setState(() => _isLoading = true);
-      } else if (!refresh) {
+      } else {
         setState(() => _isLoadingMore = true);
       }
       
       final result = await homeService.fetchProductsByCategory(
-        widget.category.id,
+        _selectedCategory.id,
         page: _currentPage,
         sortBy: _sortBy,
         minPrice: _minPrice,
@@ -140,8 +203,8 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
       if (mounted) {
         setState(() {
           final rawProducts = result['products'] as List<Product>? ?? [];
-          // Filter out products with 0 price
-          final newProducts = rawProducts.where((p) => (p.price ?? 0) > 0).toList();
+          // Allow all products including those with price 0 (API products where price is fetched on detail view)
+          final newProducts = rawProducts.toList();
           
           final pagination = result['pagination'];
           
@@ -157,7 +220,6 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
               _currentPage++;
             }
           } else {
-            // Fallback if no pagination data
             _hasMore = newProducts.isNotEmpty;
             if (_hasMore) _currentPage++;
           }
@@ -176,15 +238,56 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
       }
     }
   }
+  
+  /// Fetch fresh products in background without blocking UI
+  Future<void> _fetchProductsInBackground() async {
+    final homeService = Provider.of<HomeService>(context, listen: false);
+    
+    try {
+      final result = await homeService.fetchProductsByCategory(
+        _selectedCategory.id,
+        page: 1,
+        sortBy: _sortBy,
+      );
+      
+      if (mounted && result['fromCache'] != true) {
+        final newProducts = result['products'] as List<Product>? ?? [];
+        final pagination = result['pagination'];
+        
+        // Only update if product count changed
+        if (newProducts.length != _products.length) {
+          setState(() {
+            _products = newProducts;
+            _hasMore = pagination?['has_next'] == true;
+            _currentPage = 2;
+          });
+          debugPrint('🔄 Background refresh: updated to ${newProducts.length} products');
+        }
+      }
+    } catch (e) {
+      debugPrint('Background fetch error: $e');
+    }
+  }
+
+  void _onCategorySelected(ProductCategory category) {
+    if (category.id == _selectedCategory.id) return;
+    
+    setState(() {
+      _selectedCategory = category;
+      _products = [];
+      _isLoading = true;
+    });
+    
+    _fetchProducts(refresh: true);
+  }
 
   void _applyFilters() {
     setState(() {
       _minPrice = double.tryParse(_minPriceController.text);
       _maxPrice = double.tryParse(_maxPriceController.text);
-      _isLoading = true;
-      _products = []; // Clear current list
+      _products = [];
     });
-    Navigator.pop(context); // Close sheet
+    Navigator.pop(context);
     _fetchProducts(refresh: true);
   }
 
@@ -341,371 +444,302 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   @override
   void dispose() {
     _wishlistSubscription?.cancel();
-    _sheetController.dispose();
+    _scrollController.dispose();
+    _categoryScrollController.dispose();
     _minPriceController.dispose();
     _maxPriceController.dispose();
+    
+    // Remove HomeService listener
+    final homeService = Provider.of<HomeService>(context, listen: false);
+    homeService.removeListener(_onHomeServiceUpdate);
+    
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // Use fetched products, or fallback to empty list
-    final categoryProducts = _products;
+    final statusBarHeight = MediaQuery.of(context).padding.top;
 
-    return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.white,
-      body: Stack(
-        children: [
-          // 1. Parallax Header Image
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: MediaQuery.of(context).size.height * 0.65, // Cover top 65%
-            child: Transform.scale(
-              scale: 1.0 + (_sheetPosition - 0.6) * 0.5, // Zoom effect when dragging up
-              child: widget.category.mainImage != null && widget.category.mainImage!.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: widget.category.mainImage!,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Image.asset(
-                        'assets/images/category_loadingorfailbak.png',
-                        fit: BoxFit.cover,
-                      ),
-                      errorWidget: (context, url, error) => Image.asset(
-                        'assets/images/category_loadingorfailbak.png',
-                        fit: BoxFit.cover,
-                      ),
-                    )
-                  : Image.asset(
-                      'assets/images/category_loadingorfailbak.png',
-                      fit: BoxFit.cover,
-                    ),
-            ),
-          ),
-
-          // Gradient Overlay for text visibility if needed (optional)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 120,
-            child: Container(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: isDark ? Colors.black : Colors.white,
+        body: Column(
+          children: [
+            // Header with back button and filter
+            Container(
+              padding: EdgeInsets.only(top: statusBarHeight),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.6),
-                    Colors.transparent,
-                  ],
-                ),
+                color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-            ),
-          ),
-
-
-
-          // Title in Header (Visible when sheet is down)
-          Positioned(
-            top: MediaQuery.of(context).size.height * 0.25,
-            left: 24,
-            right: 24,
-            child: Opacity(
-              opacity: (1.0 - ((_sheetPosition - 0.6) / 0.4)).clamp(0.0, 1.0), // Fade out as sheet goes up
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.category.name,
-                    style: AppTypography.headingLarge(color: Colors.white).copyWith(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black.withOpacity(0.5),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                  // Top row: Back, Title, Filter
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            _selectedCategory.name,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.white : Colors.black,
+                              height: 1.2,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Stack(
+                          children: [
+                            IconButton(
+                              onPressed: _showFilterSheet,
+                              icon: Icon(
+                                Iconsax.setting_4,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                            ),
+                            if (_minPrice != null || _maxPrice != null || _sortBy != 'newest')
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.primary500,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ],
                     ),
-                  ).animate().fadeIn().slideY(begin: 0.2, end: 0),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withOpacity(0.3)),
-                    ),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                      child: Text(
-                        _isLoading ? 'Loading...' : '${categoryProducts.length} Products',
-                        style: AppTypography.labelMedium(color: Colors.white),
+                  ),
+                  
+                  // Story-style category circles
+                  if (_allCategories.length > 1)
+                    SizedBox(
+                      height: 120,
+                      child: ListView.builder(
+                        controller: _categoryScrollController,
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        itemCount: _allCategories.length,
+                        itemBuilder: (context, index) {
+                          final category = _allCategories[index];
+                          final isSelected = category.id == _selectedCategory.id;
+                          
+                          return GestureDetector(
+                            onTap: () => _onCategorySelected(category),
+                            child: Container(
+                              width: 80,
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Circle avatar with border
+                                  Container(
+                                    width: 60,
+                                    height: 60,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isSelected 
+                                            ? AppColors.primary500 
+                                            : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                                        width: isSelected ? 3 : 2,
+                                      ),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(2),
+                                      child: ClipOval(
+                                        child: category.mainImage != null && category.mainImage!.isNotEmpty
+                                            ? CachedNetworkImage(
+                                                imageUrl: category.mainImage!,
+                                                fit: BoxFit.cover,
+                                                placeholder: (context, url) => Image.asset(
+                                                  'assets/images/category_loadingorfailbak.png',
+                                                  fit: BoxFit.cover,
+                                                ),
+                                                errorWidget: (context, url, error) => Image.asset(
+                                                  'assets/images/category_loadingorfailbak.png',
+                                                  fit: BoxFit.cover,
+                                                ),
+                                              )
+                                            : Image.asset(
+                                                'assets/images/category_loadingorfailbak.png',
+                                                fit: BoxFit.cover,
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  // Category name - allow wrapping to 2 lines
+                                  SizedBox(
+                                    height: 28,
+                                    child: Text(
+                                      category.name,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                        color: isSelected 
+                                            ? AppColors.primary500 
+                                            : (isDark ? Colors.white70 : Colors.black87),
+                                        height: 1.2,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      softWrap: true,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.2, end: 0),
                 ],
               ),
             ),
-          ),
-
-          // 2. Draggable Bottom Sheet
-          Positioned.fill(
-            top: MediaQuery.of(context).padding.top + 60,
-            child: DraggableScrollableSheet(
-              controller: _sheetController,
-            initialChildSize: 1.0, // Start fully expanded
-            minChildSize: 0.55,
-            maxChildSize: 1.0,
-            snap: true,
-            snapSizes: const [0.6, 1.0],
-            builder: (context, scrollController) {
-              return NotificationListener<ScrollNotification>(
-                onNotification: (ScrollNotification scrollInfo) {
-                  // Smart Prefetching: Load more when user scrolls 70% down the list
-                  if (!_isLoadingMore && 
-                      _hasMore && 
-                      scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent * 0.7) {
-                    _fetchProducts();
-                  }
-                  return false;
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 20,
-                        offset: const Offset(0, -5),
-                      ),
-                    ],
-                  ),
-                  child: CustomScrollView(
-                    controller: scrollController,
-                    physics: const BouncingScrollPhysics(),
-                    slivers: [
-                      // Drag Handle
-                      SliverToBoxAdapter(
-                        child: Center(
-                          child: Container(
-                            margin: const EdgeInsets.only(top: 12, bottom: 20),
-                            width: 40,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withOpacity(0.2) : AppColors.neutral300,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // Sheet Header (Title)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Text(
-                            'Collection',
-                            style: AppTypography.headingSmall(
-                              color: isDark ? Colors.white : AppColors.neutral900,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      SliverToBoxAdapter(child: AppSpacing.verticalLg),
-
-                      // Products Grid
-                      if (_isLoading && _products.isEmpty)
-                        SliverPadding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          sliver: SliverGrid(
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              childAspectRatio: 0.62,
-                              crossAxisSpacing: 16,
-                              mainAxisSpacing: 16,
-                            ),
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) {
-                                return Container(
-                                  decoration: BoxDecoration(
-                                    color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade200,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                ).animate(onPlay: (controller) => controller.repeat())
-                                 .shimmer(duration: 1200.ms, color: isDark ? Colors.white10 : Colors.white54);
-                              },
-                              childCount: 6,
-                            ),
-                          ),
-                        )
-                      else if (categoryProducts.isEmpty)
-                        SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Iconsax.box, size: 48, color: isDark ? Colors.white54 : Colors.black26),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'No products found',
-                                  style: AppTypography.bodyLarge(
-                                    color: isDark ? Colors.white54 : Colors.black54,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      else
-                        SliverPadding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          sliver: SliverMasonryGrid.count(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 4,
-                            crossAxisSpacing: 4,
-                            childCount: categoryProducts.length,
-                            itemBuilder: (context, index) {
-                              final product = categoryProducts[index];
-                              return ProductCard.fromProduct(
-                                product,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => ProductDetailsScreen(product: product),
-                                    ),
-                                  ).then((_) {
-                                    if (mounted) {
-                                      _fetchProducts(refresh: true);
-                                    }
-                                  });
-                                },
-                              ).animate().fadeIn(delay: Duration(milliseconds: 50 * (index % 6)));
-                            },
-                          ),
-                        ),
-
-                      // Loading More Indicator
-                      if (_isLoadingMore)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24.0),
-                            child: Center(
-                              child: SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: isDark ? Colors.white : AppColors.primary500,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      SliverToBoxAdapter(child: AppSpacing.verticalXxl),
-                      SliverToBoxAdapter(child: AppSpacing.verticalXxl), // Extra padding for bottom
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          ),
-
-          // Back Button (Moved to end of Stack to stay on top)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            left: 16,
-            child: IconButton(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.black.withOpacity(0.3),
-                padding: const EdgeInsets.all(12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+            
+            // Products Grid
+            Expanded(
+              child: _isLoading
+                  ? _buildLoadingGrid(isDark)
+                  : _products.isEmpty
+                      ? _buildEmptyState(isDark)
+                      : _buildProductsGrid(isDark),
             ),
-          ),
+          ],
+        ),
+      ),
+    );
+  }
 
-          // Filter Button (Moved to end of Stack to stay on top)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            right: 16,
-            child: Stack(
-              children: [
-                IconButton(
-                  onPressed: _showFilterSheet,
-                  icon: const Icon(Iconsax.setting_4, color: Colors.white),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black.withOpacity(0.3),
-                    padding: const EdgeInsets.all(12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-                if (_minPrice != null || _maxPrice != null || _sortBy != 'newest')
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: const BoxDecoration(
-                        color: AppColors.primary500,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-              ],
+  Widget _buildLoadingGrid(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: GridView.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 0.62,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+        ),
+        itemCount: 6,
+        itemBuilder: (context, index) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.asset(
+              'assets/images/productfailbackorskeleton_loading.png',
+              fit: BoxFit.cover,
+            ),
+          ).animate(onPlay: (controller) => controller.repeat())
+           .shimmer(duration: 1200.ms, color: isDark ? Colors.white10 : Colors.white54);
+        },
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Iconsax.box, size: 48, color: isDark ? Colors.white54 : Colors.black26),
+          const SizedBox(height: 16),
+          Text(
+            'No products found',
+            style: AppTypography.bodyLarge(
+              color: isDark ? Colors.white54 : Colors.black54,
             ),
           ),
         ],
       ),
     );
   }
-}
 
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final bool isDark;
+  Widget _buildProductsGrid(bool isDark) {
+    return RefreshIndicator(
+      onRefresh: () => _fetchProducts(refresh: true),
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.all(8),
+            sliver: SliverMasonryGrid.count(
+              crossAxisCount: 2,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
+              childCount: _products.length,
+              itemBuilder: (context, index) {
+                final product = _products[index];
+                return ProductCard.fromProduct(
+                  product,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ProductDetailsScreen(product: product),
+                      ),
+                    );
+                    // Note: Removed .then(() => _fetchProducts(refresh: true)) because
+                    // it was overwriting the wishlist state. The wishlist subscription
+                    // already keeps the state in sync without needing to refetch.
+                  },
+                ).animate().fadeIn(delay: Duration(milliseconds: 50 * (index % 6)));
 
-  const _FilterChip({
-    required this.label,
-    required this.isSelected,
-    required this.isDark,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: isSelected
-            ? AppColors.primary500
-            : (isDark ? Colors.white.withOpacity(0.05) : AppColors.neutral100),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isSelected
-              ? AppColors.primary500
-              : (isDark ? Colors.white.withOpacity(0.1) : AppColors.neutral200),
-        ),
-      ),
-      child: Text(
-        label,
-        style: AppTypography.labelMedium(
-          color: isSelected
-              ? Colors.white
-              : (isDark ? Colors.white : AppColors.neutral700),
-        ),
+              },
+            ),
+          ),
+          
+          // Loading more indicator
+          if (_isLoadingMore)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: isDark ? Colors.white : AppColors.primary500,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          
+          // Bottom padding
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
       ),
     );
   }

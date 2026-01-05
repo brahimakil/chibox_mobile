@@ -12,6 +12,8 @@ import 'core/services/address_service.dart';
 import 'core/services/category_service.dart';
 import 'core/services/navigation_provider.dart';
 import 'core/services/security_service.dart';
+import 'core/services/order_service.dart';
+import 'core/services/notification_service.dart';
 import 'features/navigation/main_shell.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/splash/screens/splash_screen.dart';
@@ -44,13 +46,21 @@ class LuxeMarketApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ThemeProvider()..init()),
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => HomeService()),
-        ChangeNotifierProvider(create: (_) => ProductService()),
+        ChangeNotifierProxyProvider<HomeService, ProductService>(
+          create: (_) => ProductService(),
+          update: (_, homeService, productService) {
+            productService?.setHomeService(homeService);
+            return productService ?? ProductService()..setHomeService(homeService);
+          },
+        ),
         ChangeNotifierProvider(create: (_) => CartService()),
         ChangeNotifierProvider(create: (_) => WishlistService()),
         ChangeNotifierProvider(create: (_) => AddressService()),
         ChangeNotifierProvider(create: (_) => CategoryService()),
         ChangeNotifierProvider(create: (_) => NavigationProvider()),
         ChangeNotifierProvider(create: (_) => SecurityService()),
+        ChangeNotifierProvider(create: (_) => OrderService()),
+        ChangeNotifierProvider(create: (_) => NotificationService()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {

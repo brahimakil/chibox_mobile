@@ -2,9 +2,11 @@ import 'package:flutter/foundation.dart';
 import '../constants/api_constants.dart';
 import '../models/product_model.dart';
 import 'api_service.dart';
+import 'home_service.dart';
 
 class ProductService extends ChangeNotifier {
   final ApiService _api = ApiService();
+  HomeService? _homeService;
   bool _isLoading = false;
   String? _error;
   
@@ -13,6 +15,11 @@ class ProductService extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   String? get error => _error;
+
+  /// Set HomeService reference for cache sync
+  void setHomeService(HomeService homeService) {
+    _homeService = homeService;
+  }
 
   /// Clear all cached product details
   void clearCache() {
@@ -49,6 +56,9 @@ class ProductService extends ChangeNotifier {
         
         // 2. Save to cache
         _productCache[id] = product;
+        
+        // 3. Sync to HomeService cache so category lists get updated product name
+        _homeService?.updateProductInCache(product);
         
         return product;
       } else {

@@ -110,10 +110,16 @@ class HomeService extends ChangeNotifier {
       );
     }
 
+    // Update _categoryCache - this ensures cached category products have correct isLiked status
+    for (final categoryId in _categoryCache.keys) {
+      _categoryCache[categoryId] = updateList(_categoryCache[categoryId]!);
+    }
+
     if (changed) {
       notifyListeners();
     }
   }
+
 
   /// Fetch home screen data
   Future<void> fetchHomeData({bool refresh = false}) async {
@@ -376,17 +382,94 @@ class HomeService extends ChangeNotifier {
     return _categoryCache[categoryId] ?? [];
   }
 
+  /// Update a product in all caches (used when product details are fetched with translation)
+  void updateProductInCache(Product updatedProduct) {
+    bool changed = false;
+
+    // Update in _allProducts
+    for (int i = 0; i < _allProducts.length; i++) {
+      if (_allProducts[i].id == updatedProduct.id) {
+        _allProducts[i] = updatedProduct;
+        changed = true;
+        break;
+      }
+    }
+
+    // Update in _categoryCache
+    for (final categoryId in _categoryCache.keys) {
+      final products = _categoryCache[categoryId]!;
+      for (int i = 0; i < products.length; i++) {
+        if (products[i].id == updatedProduct.id) {
+          products[i] = updatedProduct;
+          changed = true;
+          break;
+        }
+      }
+    }
+
+    // Update in homeData sections
+    if (_homeData != null) {
+      // Update random products
+      for (int i = 0; i < _homeData!.randomProducts.length; i++) {
+        if (_homeData!.randomProducts[i].id == updatedProduct.id) {
+          final newRandom = List<Product>.from(_homeData!.randomProducts);
+          newRandom[i] = updatedProduct;
+          _homeData = HomeData(
+            banners: _homeData!.banners,
+            gridElements: _homeData!.gridElements,
+            categories: _homeData!.categories,
+            productSections: _homeData!.productSections,
+            randomProducts: newRandom,
+            flashSales: _homeData!.flashSales,
+            pagination: _homeData!.pagination,
+          );
+          changed = true;
+          break;
+        }
+      }
+    }
+
+    if (changed) {
+      debugPrint('📦 Updated product ${updatedProduct.id} in HomeService cache');
+      notifyListeners();
+    }
+  }
+
   /// Search products (Paginated)
-  Future<Map<String, dynamic>> searchProductsPaginated(String query, {int page = 1, int perPage = 20}) async {
+  Future<Map<String, dynamic>> searchProductsPaginated(
+    String query, {
+    int page = 1,
+    int perPage = 20,
+    String? sortBy,
+    double? minPrice,
+    double? maxPrice,
+  }) async {
     try {
+      final Map<String, dynamic> queryParams = {
+        'keyword': query,
+        'page': page,
+        'per_page': perPage,
+      };
+      
+      // Add filter parameters if provided
+      if (sortBy != null && sortBy.isNotEmpty) {
+        queryParams['sort_by'] = sortBy;
+      }
+      if (minPrice != null) {
+        queryParams['min_price'] = minPrice;
+      }
+      if (maxPrice != null) {
+        queryParams['max_price'] = maxPrice;
+      }
+      
+      debugPrint('🔍 Search request: query="$query", page=$page, sortBy=$sortBy, minPrice=$minPrice, maxPrice=$maxPrice');
+      
       final response = await _api.get(
         ApiConstants.searchProducts,
-        queryParams: {
-          'keyword': query,
-          'page': page,
-          'per_page': perPage,
-        },
+        queryParams: queryParams,
       );
+
+      debugPrint('🔍 Search response: success=${response.success}, message=${response.message}');
 
       if (response.success && response.data != null) {
         final productsData = response.data!['products'] ?? response.data!['data'];
@@ -394,14 +477,18 @@ class HomeService extends ChangeNotifier {
         
         if (productsData != null && productsData is List) {
           final products = await compute(_parseProducts, productsData);
+          debugPrint('🔍 Search parsed ${products.length} products');
           return {
             'products': products,
             'has_next': pagination != null ? pagination['has_next'] ?? false : false,
           };
         }
+      } else {
+        debugPrint('❌ Search failed: ${response.message}');
       }
-    } catch (e) {
-      debugPrint('Search error: $e');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Search error: $e');
+      debugPrint('📍 Stack trace: $stackTrace');
     }
     return {'products': <Product>[], 'has_next': false};
   }
@@ -413,18 +500,38 @@ class HomeService extends ChangeNotifier {
   }
 
   /// Search products by image (Paginated)
-  Future<Map<String, dynamic>> searchByImagePaginated(String imagePath, {int page = 1, int perPage = 20}) async {
+  Future<Map<String, dynamic>> searchByImagePaginated(
+    String imagePath, {
+    int page = 1,
+    int perPage = 20,
+    String? sortBy,
+    double? minPrice,
+    double? maxPrice,
+  }) async {
     try {
       debugPrint('🔍 searchByImagePaginated called with: $imagePath');
+      
+      final Map<String, dynamic> queryParams = {
+        'page': page,
+        'per_page': perPage,
+      };
+      
+      // Add filter parameters if provided
+      if (sortBy != null && sortBy.isNotEmpty) {
+        queryParams['sort_by'] = sortBy;
+      }
+      if (minPrice != null) {
+        queryParams['min_price'] = minPrice;
+      }
+      if (maxPrice != null) {
+        queryParams['max_price'] = maxPrice;
+      }
       
       final response = await _api.postMultipart(
         ApiConstants.searchByImage,
         filePath: imagePath,
         fileField: 'file',
-        queryParams: {
-          'page': page,
-          'per_page': perPage,
-        },
+        queryParams: queryParams,
       );
 
       debugPrint('📡 API Response success: ${response.success}');
