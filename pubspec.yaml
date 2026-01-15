@@ -28,6 +28,7 @@ dependencies:
 
   # Storage
   shared_preferences: ^2.2.3
+  flutter_dotenv: ^5.1.0
   
   # Firebase
   firebase_core: ^3.3.0
@@ -91,6 +92,7 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/animations/
+    - .env
 
   # Fonts - Plus Jakarta Sans
   fonts:

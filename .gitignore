@@ -10,6 +10,13 @@
 .svn/
 migrate_working_dir/
 
+# Environment files - NEVER commit .env with secrets!
+.env
+.env.local
+.env.*.local
+# BUT .env.example is safe to commit (template only)
+!.env.example
+
 # Firebase & Secrets - NEVER commit these!
 **/firebase*.json
 **/*firebase*.json
