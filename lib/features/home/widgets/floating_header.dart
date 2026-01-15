@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:provider/provider.dart';
@@ -14,13 +15,17 @@ import 'dart:io';
 import 'dart:typed_data';
 import '../../../core/theme/theme.dart';
 import '../../../core/services/home_service.dart';
-import '../../../core/services/category_service.dart';
+import '../../../core/services/category_service.dart' show CategoryService, CategorySearchResult;
+import '../../../core/services/navigation_provider.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/models/category_model.dart' show ProductCategory;
 import '../../../core/utils/wishlist_helper.dart';
 import '../../categories/screens/category_products_screen.dart';
 import '../../product/screens/product_details_screen.dart';
+import '../../notifications/screens/notifications_screen.dart';
 import '../screens/search_results_screen.dart';
+import '../screens/visual_search_screen.dart';
 
 /// SHEIN-style Floating Header with transparent-to-solid transition
 class FloatingHeader extends StatefulWidget {
@@ -61,6 +66,8 @@ class _FloatingHeaderState extends State<FloatingHeader> {
   OverlayEntry? _overlayEntry;
   Timer? _debounce;
   List<Product> _searchResults = [];
+  List<CategorySearchResult> _categoryResults = [];
+  List<CategorySearchResult> _similarCategoryResults = []; // Fuzzy matches for typos
   List<String> _searchHistory = [];
   bool _isLoading = false;
   final HomeService _homeService = HomeService();
@@ -280,30 +287,44 @@ class _FloatingHeaderState extends State<FloatingHeader> {
     if (query.isEmpty) {
       setState(() {
         _searchResults = [];
+        _categoryResults = [];
+        _similarCategoryResults = [];
         _isLoading = false;
       });
       _overlayEntry?.markNeedsBuild();
       return;
     }
 
-    _debounce = Timer(const Duration(milliseconds: 500), () async {
-      if (!mounted) return;
-      setState(() => _isLoading = true);
-      _showOverlay();
+    // Show loading and debounce the category search
+    setState(() {
+      _isLoading = true;
+    });
+    _overlayEntry?.markNeedsBuild();
+    
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      if (!mounted || query != _searchController.text) return;
       
       try {
-        final results = await _homeService.searchProducts(query);
-        if (mounted) {
+        final categoryService = Provider.of<CategoryService>(context, listen: false);
+        final response = await categoryService.searchCategoriesWithSimilar(query, limit: 5);
+        
+        if (mounted && query == _searchController.text) {
           setState(() {
-            _searchResults = results;
+            _categoryResults = response.results;
+            _similarCategoryResults = response.similarResults;
             _isLoading = false;
           });
           _overlayEntry?.markNeedsBuild();
         }
       } catch (e) {
-        debugPrint('Search error: $e');
+        debugPrint('Error searching categories: $e');
         if (mounted) {
-          setState(() => _isLoading = false);
+          setState(() {
+            _categoryResults = [];
+            _similarCategoryResults = [];
+            _isLoading = false;
+          });
+          _overlayEntry?.markNeedsBuild();
         }
       }
     });
@@ -404,14 +425,14 @@ class _FloatingHeaderState extends State<FloatingHeader> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           TextButton(
                             onPressed: () {
                               _searchController.clear();
                               _overlayFocusNode.unfocus();
                               _removeOverlay();
                             },
-                            child: const Text('Cancel', style: TextStyle(color: AppColors.primary500, fontWeight: FontWeight.w600, fontSize: 16)),
+                            child: const Text('Cancel', style: TextStyle(color: AppColors.primary500, fontWeight: FontWeight.w600, fontSize: 13)),
                           ),
                         ],
                       ),
@@ -451,9 +472,9 @@ class _FloatingHeaderState extends State<FloatingHeader> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Iconsax.search_normal, size: 64, color: AppColors.neutral300),
-              const SizedBox(height: 16),
-              Text('Search for products', style: TextStyle(fontSize: 18, color: AppColors.neutral400, fontWeight: FontWeight.w500)),
+              Icon(Iconsax.search_normal, size: 48, color: AppColors.neutral300),
+              const SizedBox(height: 12),
+              Text('Search for products', style: TextStyle(fontSize: 14, color: AppColors.neutral400, fontWeight: FontWeight.w500)),
             ],
           ),
         );
@@ -463,14 +484,14 @@ class _FloatingHeaderState extends State<FloatingHeader> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Recent Searches', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const Text('Recent Searches', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                 TextButton(
                   onPressed: _clearHistory,
-                  child: const Text('Clear All', style: TextStyle(color: AppColors.error, fontSize: 14)),
+                  child: const Text('Clear All', style: TextStyle(color: AppColors.error, fontSize: 12)),
                 ),
               ],
             ),
@@ -490,9 +511,7 @@ class _FloatingHeaderState extends State<FloatingHeader> {
                     onPressed: () => _removeFromHistory(historyItem),
                   ),
                   onTap: () {
-                    _searchController.text = historyItem;
-                    _overlayFocusNode.unfocus();
-                    _onSearchChanged(historyItem);
+                    _submitSearch(historyItem);
                   },
                 );
               },
@@ -502,83 +521,189 @@ class _FloatingHeaderState extends State<FloatingHeader> {
       );
     }
 
-    return ListView(
+    // When user has typed something, show search button and category suggestions
+    return SingleChildScrollView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.all(16),
-      children: [
-        InkWell(
-          onTap: () {
-            _submitSearch(_searchController.text);
-            _removeOverlay();
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.primary500.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.primary500.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(color: AppColors.primary500, borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Iconsax.search_normal, color: Colors.white, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(child: Text('View all results for "${_searchController.text}"', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15))),
-                const Icon(Iconsax.arrow_right_3, size: 20),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (_searchResults.isEmpty)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(40),
-              child: Column(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Search button
+          InkWell(
+            onTap: () {
+              _submitSearch(_searchController.text);
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.primary500.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary500.withOpacity(0.3)),
+              ),
+              child: Row(
                 children: [
-                  Icon(Iconsax.search_status, size: 48, color: AppColors.neutral300),
-                  const SizedBox(height: 12),
-                  Text('No results found', style: TextStyle(fontSize: 16, color: AppColors.neutral400)),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(color: AppColors.primary500, borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Iconsax.search_normal, color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text('Search for "${_searchController.text}"', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15))),
+                  const Icon(Iconsax.arrow_right_3, size: 20),
                 ],
               ),
             ),
-          )
-        else
-          ...List.generate(_searchResults.length, (index) {
-            final product = _searchResults[index];
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))],
-              ),
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(12),
-                leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.network(product.mainImage, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.grey[200], width: 60, height: 60)),
+          ),
+          
+          // Category suggestions
+          if (_isLoading)
+            Padding(
+              padding: const EdgeInsets.only(top: 24),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.primary500,
+                  ),
                 ),
-                title: Text(product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15)),
-                subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text('\$${product.price}', style: const TextStyle(color: AppColors.primary500, fontWeight: FontWeight.bold, fontSize: 16))),
-                trailing: const Icon(Iconsax.arrow_right_3, size: 20),
-                onTap: () {
-                  _overlayFocusNode.unfocus();
-                  _addToHistory(_searchController.text);
-                  _removeOverlay();
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => ProductDetailsScreen(product: product))).then((_) {
-                    if (mounted) _showOverlay();
-                  });
-                },
               ),
-            );
-          }),
-      ],
+            )
+          else ...[
+            // Exact matches
+            if (_categoryResults.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Text(
+                'Categories',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.neutral500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...(_categoryResults.map((result) => _buildCategorySuggestion(result))),
+            ],
+            
+            // Similar categories (fuzzy matches) - "Did you mean?"
+            if (_similarCategoryResults.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Icon(Iconsax.info_circle, size: 14, color: AppColors.neutral400),
+                  const SizedBox(width: 6),
+                  Text(
+                    _categoryResults.isEmpty ? 'Did you mean?' : 'Similar categories',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.neutral400,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...(_similarCategoryResults.map((result) => _buildCategorySuggestion(result, isSimilar: true))),
+            ],
+          ],
+          
+          const SizedBox(height: 16),
+          // Hint text
+          Center(
+            child: Text(
+              'Press Enter or tap above to search products',
+              style: TextStyle(fontSize: 12, color: AppColors.neutral400),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildCategorySuggestion(CategorySearchResult result, {bool isSimilar = false}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final category = result.category;
+    final parent = result.parentCategory;
+    
+    return InkWell(
+      onTap: () {
+        _overlayFocusNode.unfocus();
+        _removeOverlay();
+        
+        // Navigate to the category - the screen will load its children hierarchically
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CategoryProductsScreen(
+              category: category,
+            ),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isSimilar 
+                    ? (isDark ? AppColors.neutral700 : AppColors.neutral50)
+                    : (isDark ? AppColors.neutral800 : AppColors.neutral100),
+                borderRadius: BorderRadius.circular(8),
+                border: isSimilar ? Border.all(
+                  color: AppColors.neutral300,
+                  style: BorderStyle.solid,
+                ) : null,
+              ),
+              child: Icon(
+                Iconsax.category,
+                size: 18,
+                color: isSimilar ? AppColors.neutral400 : AppColors.primary500,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    category.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: isSimilar ? (isDark ? AppColors.neutral300 : AppColors.neutral600) : null,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (parent != null)
+                    Text(
+                      'in ${parent.name}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.neutral400,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            Icon(
+              Iconsax.arrow_right_3,
+              size: 18,
+              color: AppColors.neutral400,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -606,59 +731,36 @@ class _FloatingHeaderState extends State<FloatingHeader> {
       ),
     );
 
-    if (mounted) _showOverlay();
+    // Only show overlay again if not navigating away (e.g., to cart)
+    if (mounted) {
+      final navProvider = Provider.of<NavigationProvider>(context, listen: false);
+      if (!navProvider.consumeCloseSearchFlag()) {
+        _showOverlay();
+      }
+    }
   }
 
+  /// Launch SHEIN-style Visual Search Screen
   Future<void> _pickImage() async {
+    if (!mounted) return;
+    
+    // Launch the SHEIN-style visual search screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const VisualSearchScreen(),
+      ),
+    );
+  }
+
+  /// Legacy: Pick from gallery only (accessible from visual search screen)
+  Future<void> _pickFromGalleryOnly() async {
     final ImagePicker picker = ImagePicker();
     
-    final ImageSource? source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 8),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                const Text('Search by Image', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildImageSourceOption(context, icon: Iconsax.camera, label: 'Camera', source: ImageSource.camera),
-                    _buildImageSourceOption(context, icon: Iconsax.gallery, label: 'Gallery', source: ImageSource.gallery),
-                  ],
-                ),
-                const SizedBox(height: 32),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    if (source == null) return;
-
     try {
-      // Use same quality for both - we'll normalize later
       final XFile? image = await picker.pickImage(
-        source: source,
-        imageQuality: 100, // Get full quality, we'll compress properly
+        source: ImageSource.gallery,
+        imageQuality: 100,
         maxWidth: 2048,
         maxHeight: 2048,
       );
@@ -666,97 +768,38 @@ class _FloatingHeaderState extends State<FloatingHeader> {
       if (image != null && mounted) {
         String imagePath = image.path;
         
-        // For ALL images (especially camera), normalize with flutter_image_compress
-        // This fixes EXIF orientation issues that cause AI recognition to fail
+        // Normalize with flutter_image_compress
         try {
           final tempDir = await getTemporaryDirectory();
-          final fileName = '${source == ImageSource.camera ? 'camera' : 'gallery'}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          final fileName = 'gallery_${DateTime.now().millisecondsSinceEpoch}.jpg';
           final targetPath = '${tempDir.path}/$fileName';
           
-          debugPrint('📷 Original image: ${image.path}');
-          debugPrint('📏 Original size: ${File(image.path).lengthSync()} bytes');
-          
-          // Compress and fix EXIF orientation
-          // flutter_image_compress automatically rotates based on EXIF
-          // Target: under 1MB (backend limit), good quality for AI recognition
           final XFile? compressedFile = await FlutterImageCompress.compressAndGetFile(
             image.path,
             targetPath,
-            quality: 75, // Lower quality to stay under 1MB
+            quality: 75,
             minWidth: 800,
             minHeight: 800,
-            rotate: 0, // Auto-rotate based on EXIF
-            autoCorrectionAngle: true, // KEY: This fixes EXIF orientation!
-            keepExif: false, // Remove EXIF after applying rotation
+            autoCorrectionAngle: true,
+            keepExif: false,
             format: CompressFormat.jpeg,
           );
           
           if (compressedFile != null) {
             imagePath = compressedFile.path;
-            final fileSize = File(imagePath).lengthSync();
-            debugPrint('✅ Image normalized to: $imagePath');
-            debugPrint('📏 Normalized size: $fileSize bytes');
-            
-            // If still over 900KB, compress more aggressively
-            if (fileSize > 900000) {
-              debugPrint('⚠️ Image still too large, compressing further...');
-              final recompressPath = '${tempDir.path}/recomp_${DateTime.now().millisecondsSinceEpoch}.jpg';
-              final recompressed = await FlutterImageCompress.compressAndGetFile(
-                imagePath,
-                recompressPath,
-                quality: 50, // More aggressive compression
-                minWidth: 600,
-                minHeight: 600,
-                autoCorrectionAngle: true,
-                keepExif: false,
-                format: CompressFormat.jpeg,
-              );
-              if (recompressed != null) {
-                imagePath = recompressed.path;
-                debugPrint('✅ Re-compressed to: ${File(imagePath).lengthSync()} bytes');
-              }
-            }
-          } else {
-            debugPrint('⚠️ Compression returned null, using original');
           }
         } catch (e) {
           debugPrint('⚠️ Failed to normalize image: $e');
-          // Fallback: just copy the file
-          if (source == ImageSource.camera) {
-            try {
-              final tempDir = await getTemporaryDirectory();
-              final fileName = 'camera_${DateTime.now().millisecondsSinceEpoch}.jpg';
-              final newPath = '${tempDir.path}/$fileName';
-              await File(image.path).copy(newPath);
-              imagePath = newPath;
-            } catch (copyError) {
-              debugPrint('⚠️ Failed to copy: $copyError');
-            }
-          }
         }
 
-        // Sanitize path (remove file:// prefix if present)
-        if (imagePath.startsWith('file://')) {
-          try {
-            imagePath = Uri.parse(imagePath).toFilePath();
-          } catch (e) {
-            debugPrint('⚠️ Failed to parse URI, stripping prefix manually: $e');
-            imagePath = imagePath.replaceFirst('file://', '');
-          }
-        }
-        
-        // Navigate to full-screen preview
+        // Navigate to search results
         if (mounted) {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => _ImagePreviewScreen(
+              builder: (context) => SearchResultsScreen(
+                title: 'Image Search Results',
                 imagePath: imagePath,
-                onSearch: (path) {
-                  Navigator.pop(context);
-                  _performImageSearch(path);
-                },
-                onCrop: _cropImage,
               ),
             ),
           );
@@ -954,16 +997,16 @@ class _FloatingHeaderState extends State<FloatingHeader> {
         children: [
           // Top Row: Logo + Search + Icons
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
               children: [
                 if (widget.opacity < 0.5)
                   Padding(
-                    padding: const EdgeInsets.only(right: 12),
+                    padding: const EdgeInsets.only(right: 10),
                     child: Image.asset(
                       'assets/images/chihelo dark color  2363x2363.png',
-                      width: 36,
-                      height: 36,
+                      width: 32,
+                      height: 32,
                       fit: BoxFit.contain,
                     ),
                   ),
@@ -972,50 +1015,74 @@ class _FloatingHeaderState extends State<FloatingHeader> {
                   child: GestureDetector(
                       onTap: _showOverlay,
                       child: Container(
-                        height: 40,
+                        height: 36,
                         decoration: BoxDecoration(
                           color: searchBarBgColor,
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(18),
                           border: widget.opacity > 0.5
                               ? Border.all(color: AppColors.neutral200, width: 1)
                               : null,
                         ),
                         child: Row(
                           children: [
-                            const SizedBox(width: 16),
-                            Icon(Iconsax.search_normal_1, color: searchIconColor, size: 18),
-                            const SizedBox(width: 10),
-                            Text('Search products...', style: TextStyle(color: searchIconColor, fontSize: 14)),
+                            const SizedBox(width: 14),
+                            Icon(Iconsax.search_normal_1, color: searchIconColor, size: 16),
+                            const SizedBox(width: 8),
+                            Text('Search products...', style: TextStyle(color: searchIconColor, fontSize: 12)),
                           ],
                         ),
                       ),
                     ),
                   ),
 
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   _FloatingIconButton(icon: Iconsax.camera, color: widget.iconColor, bgOpacity: widget.opacity, onPressed: _pickImage),
-                  const SizedBox(width: 8),
-                  _FloatingIconButton(icon: Iconsax.notification, color: widget.iconColor, bgOpacity: widget.opacity, onPressed: () {}),
+                  const SizedBox(width: 6),
+                  Consumer<NotificationService>(
+                    builder: (context, notificationService, _) {
+                      return _FloatingIconButton(
+                        icon: Iconsax.notification, 
+                        color: widget.iconColor, 
+                        bgOpacity: widget.opacity,
+                        badgeCount: notificationService.unreadCount,
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
 
             // Horizontal Category Bar with Pagination
+            // Use HomeService categories (widget.categories) as fallback for instant loading
             Consumer<CategoryService>(
               builder: (context, categoryService, _) {
-                final categories = categoryService.categories;
+                // Prioritize CategoryService if loaded, fallback to HomeService categories for instant display
+                final categories = categoryService.categories.isNotEmpty 
+                    ? categoryService.categories 
+                    : widget.categories;
+                
+                // Only hide if BOTH sources are empty and not loading
                 if (categories.isEmpty && !categoryService.isLoading) {
                   return const SizedBox.shrink();
                 }
                 
+                // Show loading indicator only when CategoryService is loading AND we have no fallback
+                final showLoading = categoryService.isLoading && categoryService.categories.isEmpty && widget.categories.isEmpty;
+                
                 return Container(
-                  height: 36,
-                  margin: const EdgeInsets.only(bottom: 8),
+                  height: 32,
+                  margin: const EdgeInsets.only(bottom: 6),
                   child: ListView.builder(
                     controller: _categoryScrollController,
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: categories.length + 1 + (categoryService.isLoading ? 1 : 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    itemCount: categories.length + 1 + (showLoading ? 1 : 0),
                     itemBuilder: (context, index) {
                       final isSelected = _selectedCategoryIndex == index;
                       
@@ -1077,18 +1144,34 @@ class _FloatingHeaderState extends State<FloatingHeader> {
         ),
       );
 
+    // Determine status bar icon brightness based on header opacity
+    // When opacity > 0.5, background is light/solid, so use dark icons
+    // When opacity <= 0.5, background is transparent over banner, use light icons
+    final statusBarStyle = SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: widget.opacity > 0.5 
+          ? (isDark ? Brightness.light : Brightness.dark)
+          : Brightness.light, // Light icons when over banner
+      statusBarBrightness: widget.opacity > 0.5 
+          ? (isDark ? Brightness.dark : Brightness.light)
+          : Brightness.dark, // For iOS
+    );
+
     // Apply blur when over banner (opacity < 1) - use RepaintBoundary for performance
     if (blurAmount > 0.5) {
-      return RepaintBoundary(
-        child: ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: blurAmount, sigmaY: blurAmount),
-            child: Container(
-              decoration: BoxDecoration(
-                color: widget.headerBgColor,
-                boxShadow: boxShadow,
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: statusBarStyle,
+        child: RepaintBoundary(
+          child: ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blurAmount, sigmaY: blurAmount),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: widget.headerBgColor,
+                  boxShadow: boxShadow,
+                ),
+                child: headerContent,
               ),
-              child: headerContent,
             ),
           ),
         ),
@@ -1096,12 +1179,15 @@ class _FloatingHeaderState extends State<FloatingHeader> {
     }
 
     // Solid background when scrolled
-    return Container(
-      decoration: BoxDecoration(
-        color: widget.headerBgColor,
-        boxShadow: boxShadow,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: statusBarStyle,
+      child: Container(
+        decoration: BoxDecoration(
+          color: widget.headerBgColor,
+          boxShadow: boxShadow,
+        ),
+        child: headerContent,
       ),
-      child: headerContent,
     );
   }
 }
@@ -1111,12 +1197,14 @@ class _FloatingIconButton extends StatelessWidget {
   final Color color;
   final double bgOpacity;
   final VoidCallback onPressed;
+  final int badgeCount;
 
   const _FloatingIconButton({
     required this.icon,
     required this.color,
     required this.bgOpacity,
     required this.onPressed,
+    this.badgeCount = 0,
   });
 
   @override
@@ -1125,11 +1213,41 @@ class _FloatingIconButton extends StatelessWidget {
 
     return GestureDetector(
       onTap: onPressed,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
-        child: Icon(icon, color: color, size: 20),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          if (badgeCount > 0)
+            Positioned(
+              right: -4,
+              top: -4,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: AppColors.error,
+                  shape: BoxShape.circle,
+                ),
+                constraints: const BoxConstraints(
+                  minWidth: 16,
+                  minHeight: 16,
+                ),
+                child: Text(
+                  badgeCount > 99 ? '99+' : badgeCount.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1160,11 +1278,11 @@ class _CategoryTab extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.primary500 : Colors.transparent,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Center(
           child: Text(
@@ -1172,7 +1290,7 @@ class _CategoryTab extends StatelessWidget {
             style: TextStyle(
               color: isSelected ? Colors.white : effectiveTextColor,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              fontSize: 13,
+              fontSize: 11,
             ),
           ),
         ),

@@ -75,7 +75,8 @@ class AddressService extends ChangeNotifier {
   }
 
   /// Create new address
-  Future<bool> createAddress(Map<String, dynamic> addressData) async {
+  /// Returns the created Address on success, null on failure
+  Future<Address?> createAddress(Map<String, dynamic> addressData) async {
     _isLoading = true;
     notifyListeners();
 
@@ -85,16 +86,21 @@ class AddressService extends ChangeNotifier {
         body: addressData,
       );
       
-      if (response.success) {
+      if (response.success && response.data != null) {
         await fetchAddresses(); // Refresh list
-        return true;
+        // Return the newly created address from response
+        if (response.data!['address'] != null) {
+          return Address.fromJson(response.data!['address']);
+        }
+        // Fallback: return the first address (which should be default/newest)
+        return _addresses.isNotEmpty ? _addresses.first : null;
       } else {
         _error = response.message;
-        return false;
+        return null;
       }
     } catch (e) {
       _error = e.toString();
-      return false;
+      return null;
     } finally {
       _isLoading = false;
       notifyListeners();

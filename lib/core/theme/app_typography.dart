@@ -8,17 +8,17 @@ class AppTypography {
   // Font Family - Plus Jakarta Sans for modern, professional look
   static const String fontFamily = 'PlusJakartaSans';
 
-  // Font Sizes
-  static const double fontSizeXs = 10.0;
-  static const double fontSizeSm = 12.0;
-  static const double fontSizeBase = 14.0;
-  static const double fontSizeMd = 16.0;
-  static const double fontSizeLg = 18.0;
-  static const double fontSizeXl = 20.0;
-  static const double fontSize2xl = 24.0;
-  static const double fontSize3xl = 28.0;
-  static const double fontSize4xl = 32.0;
-  static const double fontSize5xl = 40.0;
+  // Font Sizes - Compact (SHEIN-style)
+  static const double fontSizeXs = 9.0;
+  static const double fontSizeSm = 11.0;
+  static const double fontSizeBase = 13.0;
+  static const double fontSizeMd = 14.0;
+  static const double fontSizeLg = 16.0;
+  static const double fontSizeXl = 18.0;
+  static const double fontSize2xl = 20.0;
+  static const double fontSize3xl = 24.0;
+  static const double fontSize4xl = 28.0;
+  static const double fontSize5xl = 32.0;
 
   // Font Weights
   static const FontWeight fontWeightLight = FontWeight.w300;

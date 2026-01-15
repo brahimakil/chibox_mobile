@@ -102,6 +102,32 @@ class Product extends Equatable {
       }
     }
     
+    // Parse variants first so we can use them for price fallback
+    final variants = (json['variants'] ?? json['variations']) != null
+        ? ((json['variants'] ?? json['variations']) as List)
+            .map((v) => ProductVariant.fromJson(v))
+            .toList()
+        : null;
+    
+    // Parse price - ALWAYS prefer variant prices when available
+    // Base product price is often outdated, variant prices are the actual purchasable prices
+    double price = _parseDouble(json['price']);
+    if (variants != null && variants.isNotEmpty) {
+      // Get the minimum variant price that's greater than 0
+      final variantPrices = variants
+          .map((v) => v.price)
+          .where((p) => p > 0)
+          .toList();
+      if (variantPrices.isNotEmpty) {
+        variantPrices.sort();
+        final minVariantPrice = variantPrices.first;
+        // Always use variant price as it's the actual purchasable price
+        if (minVariantPrice > 0) {
+          price = minVariantPrice;
+        }
+      }
+    }
+    
     return Product(
       id: json['id'] as int,
       name: name,
@@ -109,18 +135,14 @@ class Product extends Equatable {
       description: json['description'] as String?,
       slug: json['slug'] as String?,
       mainImage: ImageHelper.parse(json['main_image']),
-      price: _parseDouble(json['price']),
+      price: price,
       originalPrice: json['original_price'] != null 
           ? _parseDouble(json['original_price']) 
           : null,
       currencySymbol: json['currency_symbol'] ?? '\$',
       isLiked: json['is_liked'] == true || json['is_liked'] == 1,
       cartQuantity: json['cart_quantity'] ?? 0,
-      variants: (json['variants'] ?? json['variations']) != null
-          ? ((json['variants'] ?? json['variations']) as List)
-              .map((v) => ProductVariant.fromJson(v))
-              .toList()
-          : null,
+      variants: variants,
       images: json['images'] != null
           ? (json['images'] as List).map((e) => ImageHelper.parse(e)).toList()
           : null,
@@ -206,6 +228,7 @@ class Product extends Equatable {
     List<String>? images,
     double? rating,
     int? reviewCount,
+    int? categoryId,
     String? productCode,
     String? originalName,
     String? videoUrl,
@@ -230,6 +253,7 @@ class Product extends Equatable {
       images: images ?? this.images,
       rating: rating ?? this.rating,
       reviewCount: reviewCount ?? this.reviewCount,
+      categoryId: categoryId ?? this.categoryId,
       productCode: productCode ?? this.productCode,
       originalName: originalName ?? this.originalName,
       videoUrl: videoUrl ?? this.videoUrl,

@@ -32,6 +32,20 @@ class CartItem {
   });
 
   factory CartItem.fromJson(Map<String, dynamic> json) {
+    // Parse product name with fallbacks
+    String productName = '';
+    if (json['product_name'] != null && json['product_name'].toString().trim().isNotEmpty) {
+      productName = json['product_name'].toString().trim();
+    } else if (json['name'] != null && json['name'].toString().trim().isNotEmpty) {
+      productName = json['name'].toString().trim();
+    } else if (json['display_name'] != null && json['display_name'].toString().trim().isNotEmpty) {
+      productName = json['display_name'].toString().trim();
+    } else if (json['original_name'] != null && json['original_name'].toString().trim().isNotEmpty) {
+      productName = json['original_name'].toString().trim();
+    } else {
+      productName = 'Product #${json['product_id'] ?? json['id'] ?? ''}';
+    }
+    
     return CartItem(
       id: json['id'] is int ? json['id'] : int.parse(json['id'].toString()),
       productId: json['product_id'] is int ? json['product_id'] : int.parse(json['product_id'].toString()),
@@ -39,7 +53,7 @@ class CartItem {
           ? (json['variant_id'] is int ? json['variant_id'] : int.parse(json['variant_id'].toString())) 
           : null,
       quantity: json['quantity'] is int ? json['quantity'] : int.parse(json['quantity'].toString()),
-      productName: json['product_name'] ?? '',
+      productName: productName,
       slug: json['slug'] ?? '',
       mainImage: ImageHelper.parse(json['main_image']),
       variationName: json['variation_name'],

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:provider/provider.dart';
@@ -6,9 +7,11 @@ import '../../../core/theme/theme.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/models/category_model.dart';
 import '../../../core/services/home_service.dart';
+import '../../../core/utils/wishlist_helper.dart';
 import '../../../shared/widgets/cards/product_card.dart';
 import '../../product/screens/product_details_screen.dart';
 import '../../categories/screens/category_products_screen.dart';
+
 
 /// Widget to display products for a selected category with infinite scroll
 /// This widget exposes loading state and provides a method to load more products
@@ -30,8 +33,10 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
   List<Product> _products = [];
   bool _isLoading = true;
   bool _isLoadingMore = false;
+  bool _isPrefetching = false; // Track prefetch state to avoid duplicate calls
   bool _hasMore = true;
   int _currentPage = 1;
+  StreamSubscription? _wishlistSubscription;
 
   @override
   void initState() {
@@ -41,7 +46,19 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
     
     // If parent scroll controller is provided, use it for infinite scroll
     widget.parentScrollController?.addListener(_onParentScroll);
+    
+    // Listen for global wishlist updates to keep product states in sync
+    _wishlistSubscription = WishlistHelper.onStatusChanged.listen((update) {
+      if (!mounted) return;
+      final index = _products.indexWhere((p) => p.id == update.id);
+      if (index != -1) {
+        setState(() {
+          _products[index] = _products[index].copyWith(isLiked: update.isLiked);
+        });
+      }
+    });
   }
+
 
   /// Try to load products from local cache for instant display
   void _loadLocalProducts() {
@@ -53,8 +70,8 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
       setState(() {
         _products = cached;
         _isLoading = false;
-        // Estimate next page based on cached count (assuming 10 per page)
-        _currentPage = (cached.length / 10).ceil() + 1;
+        // Estimate next page based on cached count (30 per page like home screen)
+        _currentPage = (cached.length / 30).ceil() + 1;
         _hasMore = true;
       });
       return;
@@ -93,6 +110,7 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
 
   @override
   void dispose() {
+    _wishlistSubscription?.cancel();
     widget.parentScrollController?.removeListener(_onParentScroll);
     super.dispose();
   }
@@ -101,8 +119,19 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
     final controller = widget.parentScrollController;
     if (controller == null) return;
     
-    if (controller.position.pixels >= controller.position.maxScrollExtent - 300) {
-      loadMore();
+    // SMART FETCH: Percentage-based loading like home screen
+    final maxScroll = controller.position.maxScrollExtent;
+    if (maxScroll > 0) {
+      final currentScroll = controller.position.pixels;
+      final scrollPercentage = (currentScroll / maxScroll * 100).clamp(0, 100);
+      
+      // AGGRESSIVE PREFETCH: Start loading at just 1% scroll (user barely scrolled)
+      // This ensures products are ready before user even sees the loading indicator
+      if (scrollPercentage >= 1 && !_isPrefetching && !_isLoadingMore && _hasMore && !_isLoading) {
+        debugPrint('🚀 SMART PREFETCH: ${scrollPercentage.toStringAsFixed(1)}% scrolled - prefetching next page');
+        _isPrefetching = true;
+        _fetchProducts().then((_) => _isPrefetching = false);
+      }
     }
   }
 
@@ -141,8 +170,8 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
       if (mounted) {
         setState(() {
           final rawProducts = result['products'] as List<Product>? ?? [];
-          // Filter out products with 0 price
-          final newProducts = rawProducts.where((p) => (p.price ?? 0) > 0).toList();
+          // Allow all products including those with price 0 (API products where price is fetched on detail view)
+          final newProducts = rawProducts.toList();
           
           final pagination = result['pagination'];
           
@@ -204,27 +233,29 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
     if (_products.isEmpty) {
       return SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(24),
           child: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   Icons.inventory_2_outlined,
-                  size: 64,
+                  size: 48,
                   color: isDark ? Colors.white24 : Colors.black26,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Text(
                   'No products found',
-                  style: AppTypography.bodyLarge(
+                  style: TextStyle(
+                    fontSize: 13,
                     color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   'Try selecting a different category',
-                  style: AppTypography.bodySmall(
+                  style: TextStyle(
+                    fontSize: 11,
                     color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
                   ),
                 ),
@@ -256,26 +287,30 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
           borderRadius: BorderRadius.circular(12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // View All header - goes to products page
-              InkWell(
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => CategoryProductsScreen(category: widget.category),
+                      builder: (context) => CategoryProductsScreen(
+                        category: widget.category,
+                      ),
                     ),
                   );
                 },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
                         'Products',
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: isDark ? Colors.white : Colors.black87,
                         ),
@@ -285,15 +320,15 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
                           Text(
                             'View All',
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 11,
                               fontWeight: FontWeight.w500,
                               color: AppColors.primary500,
                             ),
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 3),
                           Icon(
                             Iconsax.arrow_right_3,
-                            size: 16,
+                            size: 14,
                             color: AppColors.primary500,
                           ),
                         ],
@@ -302,14 +337,11 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
                   ),
                 ),
               ),
-              Divider(
-                height: 1,
-                color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-              ),
-              // Products grid
+              // Products grid - tight spacing with header
               Padding(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                 child: MasonryGridView.count(
+                  padding: EdgeInsets.zero,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   crossAxisCount: 2,
@@ -336,11 +368,12 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
               // End message
               if (!_hasMore && _products.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(12),
                   child: Center(
                     child: Text(
                       'You\'ve seen all products!',
-                      style: AppTypography.bodyMedium(
+                      style: TextStyle(
+                        fontSize: 11,
                         color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
                       ),
                     ),

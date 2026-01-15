@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:provider/provider.dart';
-import 'package:lottie/lottie.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'dart:async';
@@ -10,7 +10,9 @@ import '../../../core/theme/theme.dart';
 import '../../../core/services/home_service.dart';
 import '../../../core/services/product_service.dart';
 import '../../../core/services/category_service.dart';
+import '../../../core/services/navigation_provider.dart';
 import '../../../core/models/home_data_model.dart' show GridElement;
+import '../../../core/models/product_model.dart';
 import '../../../core/models/category_model.dart' show ProductCategory;
 import '../../../core/utils/image_helper.dart';
 import '../../product/screens/product_details_screen.dart';
@@ -21,10 +23,12 @@ import '../widgets/legacy_banner_carousel.dart';
 import '../widgets/product_ad_banner_widget.dart';
 import '../widgets/home_error_state.dart';
 import '../widgets/flash_sale_section.dart';
+import '../widgets/hot_sellings_section.dart';
 import '../widgets/category_products_grid.dart';
 import '../widgets/quick_actions_row.dart';
 import '../../../shared/widgets/widgets.dart';
 import 'all_products_screen.dart';
+import 'unified_products_grid_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -54,10 +58,67 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadData();
     _scrollController.addListener(_onScroll);
     _startBannerAutoPlay();
+    
+    // Listen for home reset requests and register category clear callback
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navProvider = context.read<NavigationProvider>();
+      navProvider.addListener(_onNavigationChange);
+      
+      // Register callback to clear category selection (for back button handling)
+      navProvider.registerHomeCategoryClearCallback(_clearCategorySelection);
+    });
+    
+    // Listen for category selection changes to update NavigationProvider
+    _selectedCategoryNotifier.addListener(_onCategorySelectionChanged);
+  }
+  
+  void _onCategorySelectionChanged() {
+    final navProvider = context.read<NavigationProvider>();
+    navProvider.setHomeCategorySelected(_selectedCategoryNotifier.value != null);
+  }
+  
+  void _clearCategorySelection() {
+    _selectedCategoryNotifier.value = null;
+    // Scroll to top when clearing category
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+  
+  void _onNavigationChange() {
+    final navProvider = context.read<NavigationProvider>();
+    if (navProvider.consumeResetHomeFlag()) {
+      _resetHome();
+    }
+  }
+  
+  void _resetHome() {
+    // Scroll to top
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    // Clear selected category
+    _selectedCategoryNotifier.value = null;
   }
 
   @override
   void dispose() {
+    // Remove navigation listener and unregister callback
+    try {
+      final navProvider = context.read<NavigationProvider>();
+      navProvider.removeListener(_onNavigationChange);
+      navProvider.unregisterHomeCategoryClearCallback();
+      navProvider.setHomeCategorySelected(false);
+    } catch (_) {}
+    _selectedCategoryNotifier.removeListener(_onCategorySelectionChanged);
     _scrollController.dispose();
     _bannerPageController.dispose();
     _bannerIndexNotifier.dispose();
@@ -88,9 +149,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _loadData() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<HomeService>().fetchHomeData(refresh: true);
-      // Also load full categories with subcategories from CategoryService
-      context.read<CategoryService>().fetchCategories(refresh: true);
+      final homeService = context.read<HomeService>();
+      final categoryService = context.read<CategoryService>();
+      
+      // Only fetch if data wasn't preloaded during splash
+      if (homeService.homeData == null) {
+        homeService.fetchHomeData();
+      }
+      if (categoryService.categories.isEmpty) {
+        categoryService.fetchCategories();
+      }
     });
   }
 
@@ -112,10 +180,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final maxScroll = _scrollController.position.maxScrollExtent;
     if (maxScroll > 0) {
       final scrollPercentage = (currentScroll / maxScroll * 100).clamp(0, 100);
-      if (scrollPercentage >= 70 && scrollPercentage < 80) {
+      // Prefetch at 50% - loads in background silently
+      if (scrollPercentage >= 50) {
         context.read<HomeService>().prefetchNextPage();
       }
-      if (currentScroll >= maxScroll - 200) {
+      // Load more at 80% - triggers skeleton and fetches next page
+      if (scrollPercentage >= 80) {
         context.read<HomeService>().loadMoreProducts();
       }
     }
@@ -132,11 +202,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final homeService = context.watch<HomeService>();
     final statusBarHeight = MediaQuery.of(context).padding.top;
 
-    // Loading state
+    // Loading state - show skeleton instead of blocking animation
     if (homeService.isLoading && homeService.homeData == null) {
       return Scaffold(
-        body: Center(
-          child: Lottie.asset('assets/animations/loadingproducts.json', width: 200, height: 200),
+        backgroundColor: isDark ? Colors.black : Colors.white,
+        body: SafeArea(
+          child: _buildSkeletonLoading(isDark),
         ),
       );
     }
@@ -262,6 +333,34 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
 
+                // Hot Sellings - hide when category selected
+                ValueListenableBuilder<ProductCategory?>(
+                  valueListenable: _selectedCategoryNotifier,
+                  builder: (context, selectedCategory, _) {
+                    if (selectedCategory != null) return const SliverToBoxAdapter(child: SizedBox.shrink());
+                    if (homeService.hotSellings.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+                    return SliverToBoxAdapter(
+                      child: RepaintBoundary(
+                        child: HotSellingsSection(products: homeService.hotSellings),
+                      ),
+                    );
+                  },
+                ),
+
+                // Price Deals Sections ($1, $2, $5, $7) - hide when category selected
+                ValueListenableBuilder<ProductCategory?>(
+                  valueListenable: _selectedCategoryNotifier,
+                  builder: (context, selectedCategory, _) {
+                    if (selectedCategory != null) return const SliverToBoxAdapter(child: SizedBox.shrink());
+                    if (homeService.oneDollarProducts.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+                    return SliverToBoxAdapter(
+                      child: RepaintBoundary(
+                        child: _PriceDealsTabsSection(products: homeService.oneDollarProducts),
+                      ),
+                    );
+                  },
+                ),
+
                 // Flash Sales - hide when category selected
                 ValueListenableBuilder<ProductCategory?>(
                   valueListenable: _selectedCategoryNotifier,
@@ -332,64 +431,41 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
 
-                // Products Grid - hide when category selected
+                // Products Grid Sliver - lazy loading for performance
                 ValueListenableBuilder<ProductCategory?>(
                   valueListenable: _selectedCategoryNotifier,
                   builder: (context, selectedCategory, _) {
                     if (selectedCategory != null) return const SliverToBoxAdapter(child: SizedBox.shrink());
                     if (homeService.allProducts.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
                     
-                    // Add skeleton items when loading more
-                    final isLoadingMore = homeService.isLoadingMore || homeService.isPrefetching;
-                    final skeletonCount = isLoadingMore ? 2 : 0;
+                    // Show skeleton when loading more products or prefetching
+                    final showSkeleton = homeService.isLoadingMore || homeService.isPrefetching;
+                    final skeletonCount = showSkeleton ? 4 : 0;
                     
-                    return SliverToBoxAdapter(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                          borderRadius: const BorderRadius.only(
-                            bottomLeft: Radius.circular(12),
-                            bottomRight: Radius.circular(12),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: isDark 
-                                  ? Colors.black.withOpacity(0.5) 
-                                  : Colors.black.withOpacity(0.12),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: MasonryGridView.count(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 4,
-                          crossAxisSpacing: 4,
-                          addAutomaticKeepAlives: false,
-                          addRepaintBoundaries: true,
-                          itemCount: homeService.allProducts.length + skeletonCount,
-                          itemBuilder: (context, index) {
-                            // Show skeleton cards at the end when loading
-                            if (index >= homeService.allProducts.length) {
-                              return _buildPaginationSkeleton(isDark, index);
-                            }
-                            
-                            final product = homeService.allProducts[index];
-                            return RepaintBoundary(
-                              child: ProductCard.fromProduct(
-                                product,
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => ProductDetailsScreen(product: product)),
-                                ),
+                    return SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(12, 2, 12, 0),
+                      sliver: SliverMasonryGrid.count(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 4,
+                        crossAxisSpacing: 4,
+                        childCount: homeService.allProducts.length + skeletonCount,
+                        itemBuilder: (context, index) {
+                          // Show skeleton cards at the end when loading
+                          if (index >= homeService.allProducts.length) {
+                            return _buildPaginationSkeleton(isDark, index);
+                          }
+                          
+                          final product = homeService.allProducts[index];
+                          return RepaintBoundary(
+                            child: ProductCard.fromProduct(
+                              product,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => ProductDetailsScreen(product: product)),
                               ),
-                            );
-                          },
-                        ),
+                            ),
+                          );
+                        },
                       ),
                     );
                   },
@@ -488,6 +564,256 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                     );
                   },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build skeleton loading for initial app load - shows immediately
+  Widget _buildSkeletonLoading(bool isDark) {
+    final baseColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
+    final highlightColor = isDark ? Colors.grey[700]! : Colors.grey[100]!;
+    
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Search bar skeleton
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Shimmer.fromColors(
+              baseColor: baseColor,
+              highlightColor: highlightColor,
+              child: Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: baseColor,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+              ),
+            ),
+          ),
+          
+          // Category tabs skeleton
+          Shimmer.fromColors(
+            baseColor: baseColor,
+            highlightColor: highlightColor,
+            child: Container(
+              height: 36,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: List.generate(5, (index) => Container(
+                  width: 60,
+                  height: 28,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: baseColor,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                )),
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Banner skeleton
+          Shimmer.fromColors(
+            baseColor: baseColor,
+            highlightColor: highlightColor,
+            child: Container(
+              height: 180,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: baseColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Quick actions skeleton
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Shimmer.fromColors(
+              baseColor: baseColor,
+              highlightColor: highlightColor,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: List.generate(4, (index) => Column(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: 50,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                )),
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 20),
+          
+          // Categories section skeleton with fallback images
+          Container(
+            height: 220,
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  children: List.generate(5, (colIndex) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(2, (rowIndex) => Container(
+                      width: 76,
+                      height: 95,
+                      margin: const EdgeInsets.only(right: 8, bottom: 6),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Category image with fallback
+                          Container(
+                            width: 54,
+                            height: 54,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isDark ? Colors.grey[800] : Colors.grey[100],
+                            ),
+                            child: ClipOval(
+                              child: Image.asset(
+                                'assets/images/category_loadingorfailbak.png',
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          // Text skeleton
+                          Shimmer.fromColors(
+                            baseColor: baseColor,
+                            highlightColor: highlightColor,
+                            child: Container(
+                              width: 50,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: baseColor,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+                  )),
+                ),
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 20),
+          
+          // Products grid skeleton with fallback images
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: MasonryGridView.count(
+              crossAxisCount: 2,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: 6,
+              itemBuilder: (context, index) {
+                final heights = [200.0, 240.0, 220.0, 260.0, 180.0, 230.0];
+                final height = heights[index % heights.length];
+                
+                return Container(
+                  height: height,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Product image with fallback
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
+                          child: Image.asset(
+                            'assets/images/productfailbackorskeleton_loading.png',
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                          ),
+                        ),
+                      ),
+                      // Text skeleton
+                      Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Shimmer.fromColors(
+                          baseColor: baseColor,
+                          highlightColor: highlightColor,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: baseColor,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                width: 60,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: baseColor,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 );
               },
             ),
@@ -718,8 +1044,8 @@ class _AllProductsHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: const BorderRadius.only(
@@ -767,6 +1093,441 @@ class _AllProductsHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Price Deals Tabs Section - Shows $1, $2, $5, $7 deal tabs
+class _PriceDealsTabsSection extends StatefulWidget {
+  final List<Product> products;
+
+  const _PriceDealsTabsSection({required this.products});
+
+  @override
+  State<_PriceDealsTabsSection> createState() => _PriceDealsTabsSectionState();
+}
+
+class _PriceDealsTabsSectionState extends State<_PriceDealsTabsSection> {
+  int _selectedTab = 0;
+
+  // Price ranges for tabs
+  static const List<Map<String, dynamic>> _priceRanges = [
+    {'label': '\$1', 'min': 0.01, 'max': 1.0, 'color': Color(0xFF00C853)},
+    {'label': '\$2', 'min': 1.01, 'max': 2.0, 'color': Color(0xFF2196F3)},
+    {'label': '\$5', 'min': 2.01, 'max': 5.0, 'color': Color(0xFF9C27B0)},
+    {'label': '\$7', 'min': 5.01, 'max': 7.0, 'color': Color(0xFFFF9800)},
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final range = _priceRanges[_selectedTab];
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.only(top: 6, bottom: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: isDark 
+                ? Colors.black.withOpacity(0.5) 
+                : Colors.black.withOpacity(0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with tabs
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              children: [
+                // Icon
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [range['color'] as Color, (range['color'] as Color).withOpacity(0.7)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(
+                    Iconsax.dollar_circle,
+                    size: 14,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Price Deals',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+                const Spacer(),
+                // See All button
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => UnifiedProductsGridScreen(
+                          config: ProductGridConfig.priceDeals(
+                            title: '${range['label']} Deals',
+                            minPrice: range['min'] as double,
+                            maxPrice: range['max'] as double,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  child: Row(
+                    children: [
+                      Text(
+                        'See All',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.primary500,
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      Icon(
+                        Iconsax.arrow_right_3,
+                        size: 14,
+                        color: AppColors.primary500,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Price Range Tabs
+          SizedBox(
+            height: 32,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              itemCount: _priceRanges.length,
+              itemBuilder: (context, index) {
+                final isSelected = _selectedTab == index;
+                final tabRange = _priceRanges[index];
+                final color = tabRange['color'] as Color;
+
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedTab = index),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: EdgeInsets.only(right: index < _priceRanges.length - 1 ? 8 : 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      gradient: isSelected
+                          ? LinearGradient(
+                              colors: [color, color.withOpacity(0.8)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            )
+                          : null,
+                      color: isSelected ? null : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                      borderRadius: BorderRadius.circular(16),
+                      border: isSelected
+                          ? null
+                          : Border.all(
+                              color: color.withOpacity(0.3),
+                              width: 1,
+                            ),
+                    ),
+                    child: Text(
+                      'Under ${tabRange['label']}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                        color: isSelected
+                            ? Colors.white
+                            : (isDark ? Colors.white70 : Colors.black87),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Products for selected tab (using PriceDealsSection's product cards)
+          SizedBox(
+            height: 200,
+            child: _PriceDealsProductList(
+              minPrice: range['min'] as double,
+              maxPrice: range['max'] as double,
+              accentColor: range['color'] as Color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Product list that fetches from API based on price range
+class _PriceDealsProductList extends StatefulWidget {
+  final double minPrice;
+  final double maxPrice;
+  final Color accentColor;
+
+  const _PriceDealsProductList({
+    required this.minPrice,
+    required this.maxPrice,
+    required this.accentColor,
+  });
+
+  @override
+  State<_PriceDealsProductList> createState() => _PriceDealsProductListState();
+}
+
+class _PriceDealsProductListState extends State<_PriceDealsProductList> {
+  List<Product> _products = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PriceDealsProductList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.minPrice != widget.minPrice || oldWidget.maxPrice != widget.maxPrice) {
+      _loadProducts();
+    }
+  }
+
+  Future<void> _loadProducts() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final homeService = Provider.of<HomeService>(context, listen: false);
+      final result = await homeService.getOneDollarProductsPaginated(
+        page: 1,
+        perPage: 15,
+        minPrice: widget.minPrice,
+        maxPrice: widget.maxPrice,
+      );
+
+      if (mounted) {
+        setState(() {
+          _products = (result['products'] as List<Product>?) ?? [];
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (_isLoading) {
+      return ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        itemCount: 5,
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Shimmer.fromColors(
+              baseColor: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+              highlightColor: isDark ? Colors.grey[700]! : Colors.grey[100]!,
+              child: Container(
+                width: 130,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    if (_error != null || _products.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Iconsax.box_remove,
+              size: 32,
+              color: isDark ? Colors.white38 : Colors.black26,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'No products found',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      itemCount: _products.length,
+      itemBuilder: (context, index) {
+        final product = _products[index];
+        return Padding(
+          padding: EdgeInsets.only(
+            left: index == 0 ? 0 : 4,
+            right: index == _products.length - 1 ? 0 : 4,
+          ),
+          child: SizedBox(
+            width: 130,
+            child: _PriceDealsProductCard(
+              product: product,
+              accentColor: widget.accentColor,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Individual product card for price deals
+class _PriceDealsProductCard extends StatelessWidget {
+  final Product product;
+  final Color accentColor;
+
+  const _PriceDealsProductCard({
+    required this.product,
+    required this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProductDetailsScreen(product: product),
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF2A2A2A) : Colors.grey[50],
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isDark 
+                ? Colors.white.withOpacity(0.08) 
+                : Colors.black.withOpacity(0.06),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Product Image
+            Expanded(
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
+                child: CachedNetworkImage(
+                  imageUrl: product.mainImage,
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    color: isDark ? Colors.grey[800] : Colors.grey[200],
+                    child: const Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    color: isDark ? Colors.grey[800] : Colors.grey[200],
+                    child: const Icon(Icons.image_not_supported, size: 24),
+                  ),
+                ),
+              ),
+            ),
+            // Product Info
+            Padding(
+              padding: const EdgeInsets.all(6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.displayName ?? product.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      height: 1.2,
+                      color: isDark ? Colors.white70 : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Price with deal highlight
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          accentColor.withOpacity(0.2),
+                          accentColor.withOpacity(0.1),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '\$${product.price.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: accentColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,11 +1,11 @@
 {
-    "name": "chihelo_frontend",
-    "short_name": "chihelo_frontend",
+    "name": "Chibox",
+    "short_name": "Chibox",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Chibox - Your Premium Shopping Experience",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

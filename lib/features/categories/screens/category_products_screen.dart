@@ -10,15 +10,17 @@ import '../../../core/theme/theme.dart';
 import '../../../core/models/category_model.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/services/home_service.dart';
+import '../../../core/services/product_service.dart';
 import '../../../core/services/category_service.dart';
 import '../../../core/utils/wishlist_helper.dart';
+import '../../../core/utils/image_helper.dart';
 import '../../../shared/widgets/cards/product_card.dart';
 import '../../product/screens/product_details_screen.dart';
 
-/// SHEIN-style Category Products Screen with story-like category circles
+/// SHEIN-style Category Products Screen with hierarchical category navigation
 class CategoryProductsScreen extends StatefulWidget {
   final ProductCategory category;
-  final List<ProductCategory>? siblingCategories;
+  final List<ProductCategory>? siblingCategories; // Kept for backward compatibility
 
   const CategoryProductsScreen({
     super.key,
@@ -51,15 +53,18 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   final TextEditingController _maxPriceController = TextEditingController();
   StreamSubscription? _wishlistSubscription;
 
-  // All sibling categories for the story circles
-  List<ProductCategory> _allCategories = [];
+  // Categories to display in the top bar (selected + siblings)
+  List<ProductCategory> _displayCategories = [];
+  bool _isLoadingCategories = false;
 
   @override
   void initState() {
     super.initState();
+    // Always start with the passed category as selected
     _selectedCategory = widget.category;
     
-    _initializeCategories();
+    // Load display categories (selected + siblings)
+    _loadDisplayCategories();
     
     _wishlistSubscription = WishlistHelper.onStatusChanged.listen((update) {
       if (!mounted) return;
@@ -74,79 +79,118 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     _scrollController.addListener(_onScroll);
     _fetchProducts(refresh: true);
     
-    // Listen for HomeService updates (e.g., when product name gets translated)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final homeService = Provider.of<HomeService>(context, listen: false);
-      homeService.addListener(_onHomeServiceUpdate);
-    });
+    // NOTE: HomeService listener removed - updateProductInCache no longer notifies
+    // This was causing expensive UI rebuilds. Cache updates happen silently.
   }
   
-  /// Called when HomeService notifies (e.g., product cache updated with translated name)
-  void _onHomeServiceUpdate() {
+  /// Load categories to display in top bar: selected category + its siblings
+  Future<void> _loadDisplayCategories() async {
     if (!mounted) return;
-    final homeService = Provider.of<HomeService>(context, listen: false);
-    final cachedProducts = homeService.getCachedCategoryProducts(_selectedCategory.id);
     
-    // Update local products with any changes from cache (e.g., translated names)
-    bool anyUpdated = false;
-    for (int i = 0; i < _products.length; i++) {
-      final cached = cachedProducts.firstWhere(
-        (p) => p.id == _products[i].id,
-        orElse: () => _products[i],
-      );
-      // Check if name changed (translation happened)
-      if (cached.name != _products[i].name && cached.name.isNotEmpty) {
-        _products[i] = _products[i].copyWith(
-          name: cached.name,
-          displayName: cached.displayName,
-        );
-        anyUpdated = true;
-      }
-    }
+    setState(() => _isLoadingCategories = true);
     
-    if (anyUpdated) {
-      setState(() {});
-      debugPrint('🔄 Updated products with translated names from cache');
-    }
-  }
-
-  void _initializeCategories() {
-    if (widget.siblingCategories != null && widget.siblingCategories!.isNotEmpty) {
-      _allCategories = widget.siblingCategories!;
-    } else {
-      _allCategories = [widget.category];
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _loadSiblingCategories();
-      });
-    }
-  }
-
-  void _loadSiblingCategories() {
     final categoryService = Provider.of<CategoryService>(context, listen: false);
     
-    for (final parent in categoryService.categories) {
-      if (parent.subcategories != null) {
-        final found = parent.subcategories!.any((sub) => sub.id == widget.category.id);
-        if (found) {
-          setState(() {
-            _allCategories = parent.subcategories!;
-          });
-          _scrollToSelectedCategory();
-          break;
+    // First, check if the selected category has subcategories (children)
+    List<ProductCategory> children = [];
+    
+    // Check embedded subcategories
+    if (_selectedCategory.subcategories != null && _selectedCategory.subcategories!.isNotEmpty) {
+      children = _selectedCategory.subcategories!;
+    } else {
+      // Check cache
+      children = categoryService.getCachedSubcategories(_selectedCategory.id) ?? [];
+      
+      // Fetch from API if not cached
+      if (children.isEmpty) {
+        try {
+          final response = await categoryService.fetchSubcategories(
+            _selectedCategory.id,
+            page: 1,
+            perPage: 50,
+          );
+          children = response['subcategories'] as List<ProductCategory>? ?? [];
+        } catch (e) {
+          debugPrint('❌ Error fetching subcategories: $e');
         }
       }
     }
+    
+    if (children.isNotEmpty) {
+      // Category has children - show the selected category + its children as siblings
+      // Put selected category first, then its children
+      setState(() {
+        _displayCategories = [_selectedCategory, ...children];
+        _isLoadingCategories = false;
+      });
+      debugPrint('📂 Display: ${_selectedCategory.name} + ${children.length} children');
+    } else {
+      // Category has no children - find and show siblings (categories with same parent)
+      await _loadSiblingCategories();
+    }
+    
+    // Scroll to selected category
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToSelectedCategory();
+    });
+  }
+  
+  /// Load sibling categories (same parent level)
+  Future<void> _loadSiblingCategories() async {
+    if (!mounted) return;
+    
+    final categoryService = Provider.of<CategoryService>(context, listen: false);
+    final parentId = _selectedCategory.parentId;
+    
+    if (parentId != null && parentId > 0) {
+      // Has a parent - get siblings from parent's children
+      List<ProductCategory> siblings = categoryService.getCachedSubcategories(parentId) ?? [];
+      
+      if (siblings.isEmpty) {
+        try {
+          final response = await categoryService.fetchSubcategories(parentId, page: 1, perPage: 50);
+          siblings = response['subcategories'] as List<ProductCategory>? ?? [];
+        } catch (e) {
+          debugPrint('❌ Error fetching siblings: $e');
+        }
+      }
+      
+      if (siblings.isNotEmpty) {
+        setState(() {
+          _displayCategories = siblings;
+          _isLoadingCategories = false;
+        });
+        debugPrint('📂 Display siblings: ${siblings.length} items');
+        return;
+      }
+    }
+    
+    // Fallback: just show the selected category alone
+    setState(() {
+      _displayCategories = [_selectedCategory];
+      _isLoadingCategories = false;
+    });
   }
 
   void _scrollToSelectedCategory() {
-    final selectedIndex = _allCategories.indexWhere((c) => c.id == _selectedCategory.id);
-    if (selectedIndex != -1 && _categoryScrollController.hasClients) {
-      final targetOffset = selectedIndex * 90.0;
-      _categoryScrollController.animateTo(
-        targetOffset.clamp(0.0, _categoryScrollController.position.maxScrollExtent),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
+    if (_displayCategories.length <= 1) return;
+    
+    final selectedIndex = _displayCategories.indexWhere((c) => c.id == _selectedCategory.id);
+    if (selectedIndex != -1) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (!mounted || !_categoryScrollController.hasClients) return;
+        
+        // Each item is 80px wide + 8px margin = 88px total
+        const itemWidth = 88.0;
+        final viewportWidth = _categoryScrollController.position.viewportDimension;
+        // Calculate offset to center the selected item
+        final targetOffset = (selectedIndex * itemWidth) - (viewportWidth / 2) + (itemWidth / 2);
+        _categoryScrollController.animateTo(
+          targetOffset.clamp(0.0, _categoryScrollController.position.maxScrollExtent),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      });
     }
   }
 
@@ -159,6 +203,8 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   }
 
   Future<void> _fetchProducts({bool refresh = false}) async {
+    if (!mounted) return;
+    
     if (refresh) {
       _currentPage = 1;
       _hasMore = true;
@@ -241,6 +287,8 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   
   /// Fetch fresh products in background without blocking UI
   Future<void> _fetchProductsInBackground() async {
+    if (!mounted) return;
+    
     final homeService = Provider.of<HomeService>(context, listen: false);
     
     try {
@@ -269,16 +317,71 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     }
   }
 
-  void _onCategorySelected(ProductCategory category) {
+  /// Check if a category has children (subcategories)
+  Future<bool> _categoryHasChildren(ProductCategory category) async {
+    // First check embedded subcategories
+    if (category.subcategories != null && category.subcategories!.isNotEmpty) {
+      return true;
+    }
+    
+    // Check cache
+    final categoryService = Provider.of<CategoryService>(context, listen: false);
+    final cached = categoryService.getCachedSubcategories(category.id);
+    if (cached != null && cached.isNotEmpty) {
+      return true;
+    }
+    
+    // Fetch from API to check
+    try {
+      final response = await categoryService.fetchSubcategories(
+        category.id,
+        page: 1,
+        perPage: 1, // Just need to know if any exist
+      );
+      final children = response['subcategories'] as List<ProductCategory>? ?? [];
+      return children.isNotEmpty;
+    } catch (e) {
+      debugPrint('❌ Error checking children: $e');
+      return false;
+    }
+  }
+
+  /// When a category is tapped from the top bar
+  void _onCategorySelected(ProductCategory category) async {
     if (category.id == _selectedCategory.id) return;
     
+    debugPrint('📂 Category tapped: ${category.name} (id: ${category.id})');
+    
+    // INSTANT FEEDBACK: Immediately show selection and start loading
     setState(() {
       _selectedCategory = category;
       _products = [];
       _isLoading = true;
     });
     
-    _fetchProducts(refresh: true);
+    // Scroll to selected category immediately
+    _scrollToSelectedCategory();
+    
+    // Check if the tapped category has children
+    final hasChildren = await _categoryHasChildren(category);
+    
+    if (hasChildren) {
+      // Category has children - push new screen to show subcategories in top bar
+      // But first, restore products loading state since we're navigating away
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CategoryProductsScreen(
+              category: category,
+            ),
+          ),
+        );
+      }
+    } else {
+      // Leaf category (no children) - products are already loading, just continue
+      _fetchProducts(refresh: true);
+    }
   }
 
   void _applyFilters() {
@@ -449,9 +552,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     _minPriceController.dispose();
     _maxPriceController.dispose();
     
-    // Remove HomeService listener
-    final homeService = Provider.of<HomeService>(context, listen: false);
-    homeService.removeListener(_onHomeServiceUpdate);
+    // NOTE: HomeService listener was removed - no longer needed
     
     super.dispose();
   }
@@ -539,17 +640,17 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                     ),
                   ),
                   
-                  // Story-style category circles
-                  if (_allCategories.length > 1)
+                  // Story-style category circles (selected + siblings/children)
+                  if (_displayCategories.isNotEmpty)
                     SizedBox(
                       height: 120,
                       child: ListView.builder(
                         controller: _categoryScrollController,
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        itemCount: _allCategories.length,
+                        itemCount: _displayCategories.length,
                         itemBuilder: (context, index) {
-                          final category = _allCategories[index];
+                          final category = _displayCategories[index];
                           final isSelected = category.id == _selectedCategory.id;
                           
                           return GestureDetector(
@@ -576,9 +677,9 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                     child: Padding(
                                       padding: const EdgeInsets.all(2),
                                       child: ClipOval(
-                                        child: category.mainImage != null && category.mainImage!.isNotEmpty
+                                        child: ImageHelper.parse(category.mainImage).isNotEmpty
                                             ? CachedNetworkImage(
-                                                imageUrl: category.mainImage!,
+                                                imageUrl: ImageHelper.parse(category.mainImage),
                                                 fit: BoxFit.cover,
                                                 placeholder: (context, url) => Image.asset(
                                                   'assets/images/category_loadingorfailbak.png',
@@ -621,6 +722,20 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                             ),
                           );
                         },
+                      ),
+                    )
+                  else if (_isLoadingCategories)
+                    SizedBox(
+                      height: 120,
+                      child: Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary500,
+                          ),
+                        ),
                       ),
                     ),
                 ],

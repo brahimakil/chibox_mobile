@@ -4,9 +4,15 @@ import 'package:iconsax/iconsax.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/security_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/theme/theme.dart';
 import '../../../shared/widgets/guest_guard.dart';
 import '../../address/screens/address_list_screen.dart';
+import '../../orders/screens/orders_list_screen.dart';
+import '../../notifications/screens/notifications_screen.dart';
+import '../../support/screens/help_center_screen.dart';
+import '../../support/screens/contact_us_screen.dart';
+import '../../support/screens/about_screen.dart';
 import 'edit_profile_screen.dart';
 import 'security_settings_screen.dart';
 
@@ -40,7 +46,7 @@ class ProfileScreen extends StatelessWidget {
               
               // Profile Header
               Container(
-                padding: const EdgeInsets.all(AppSpacing.lg),
+                padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
@@ -49,13 +55,13 @@ class ProfileScreen extends StatelessWidget {
                         ? [AppColors.primary900, AppColors.primary950]
                         : [AppColors.primary50, AppColors.primary100],
                   ),
-                  borderRadius: AppSpacing.borderRadiusXl,
+                  borderRadius: AppSpacing.borderRadiusLg,
                 ),
                 child: Row(
                   children: [
                     Container(
-                      width: 72,
-                      height: 72,
+                      width: 60,
+                      height: 60,
                       decoration: BoxDecoration(
                         gradient: AppColors.primaryGradient,
                         shape: BoxShape.circle,
@@ -71,7 +77,7 @@ class ProfileScreen extends StatelessWidget {
                             )
                           : _buildInitials(user?.fullName ?? 'Guest', isDark),
                     ),
-                    AppSpacing.horizontalBase,
+                    AppSpacing.horizontalSm,
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,7 +126,12 @@ class ProfileScreen extends StatelessWidget {
                   _MenuItem(
                     icon: Iconsax.box, 
                     title: 'My Orders', 
-                    onTap: () => _handleProtectedAction(context, authService, 'My Orders', () {}),
+                    onTap: () => _handleProtectedAction(context, authService, 'My Orders', () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const OrdersListScreen()),
+                      );
+                    }),
                   ),
                   _MenuItem(
                     icon: Iconsax.location, 
@@ -133,14 +144,15 @@ class ProfileScreen extends StatelessWidget {
                     }),
                   ),
                   _MenuItem(
-                    icon: Iconsax.card, 
-                    title: 'Payment Methods', 
-                    onTap: () => _handleProtectedAction(context, authService, 'Payment Methods', () {}),
-                  ),
-                  _MenuItem(
                     icon: Iconsax.notification, 
-                    title: 'Notifications', 
-                    onTap: () => _handleProtectedAction(context, authService, 'Notifications', () {}),
+                    title: 'Notifications',
+                    badgeCount: context.watch<NotificationService>().unreadCount,
+                    onTap: () => _handleProtectedAction(context, authService, 'Notifications', () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                      );
+                    }),
                   ),
                 ],
               )
@@ -175,9 +187,36 @@ class ProfileScreen extends StatelessWidget {
               _MenuSection(
                 title: 'Support',
                 items: [
-                  _MenuItem(icon: Iconsax.message_question, title: 'Help Center', onTap: () {}),
-                  _MenuItem(icon: Iconsax.message, title: 'Contact Us', onTap: () {}),
-                  _MenuItem(icon: Iconsax.info_circle, title: 'About', onTap: () {}),
+                  _MenuItem(
+                    icon: Iconsax.message_question, 
+                    title: 'Help Center', 
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HelpCenterScreen()),
+                      );
+                    },
+                  ),
+                  _MenuItem(
+                    icon: Iconsax.message, 
+                    title: 'Contact Us', 
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ContactUsScreen()),
+                      );
+                    },
+                  ),
+                  _MenuItem(
+                    icon: Iconsax.info_circle, 
+                    title: 'About', 
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AboutScreen()),
+                      );
+                    },
+                  ),
                 ],
               )
                   .animate()
@@ -360,15 +399,17 @@ class _MenuSection extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTypography.labelMedium(
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
             color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
           ),
         ),
-        AppSpacing.verticalSm,
+        AppSpacing.verticalXs,
         Container(
           decoration: BoxDecoration(
             color: isDark ? DarkThemeColors.surface : LightThemeColors.surface,
-            borderRadius: AppSpacing.borderRadiusBase,
+            borderRadius: AppSpacing.borderRadiusSm,
             border: Border.all(
               color: isDark ? DarkThemeColors.border : LightThemeColors.border,
             ),
@@ -385,12 +426,14 @@ class _MenuItem extends StatelessWidget {
   final String title;
   final String? trailing;
   final VoidCallback onTap;
+  final int badgeCount;
 
   const _MenuItem({
     required this.icon,
     required this.title,
     this.trailing,
     required this.onTap,
+    this.badgeCount = 0,
   });
 
   @override
@@ -398,14 +441,47 @@ class _MenuItem extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ListTile(
-      leading: Icon(
-        icon,
-        color: isDark ? DarkThemeColors.text : LightThemeColors.text,
-        size: 22,
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Icon(
+            icon,
+            color: isDark ? DarkThemeColors.text : LightThemeColors.text,
+            size: 20,
+          ),
+          if (badgeCount > 0)
+            Positioned(
+              right: -6,
+              top: -4,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: const BoxDecoration(
+                  color: AppColors.error,
+                  shape: BoxShape.circle,
+                ),
+                constraints: const BoxConstraints(
+                  minWidth: 14,
+                  minHeight: 14,
+                ),
+                child: Text(
+                  badgeCount > 99 ? '99+' : badgeCount.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 8,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
       ),
       title: Text(
         title,
-        style: AppTypography.bodyMedium(
+        style: TextStyle(
+          fontSize: 13,
           color: isDark ? DarkThemeColors.text : LightThemeColors.text,
         ),
       ),
@@ -415,14 +491,15 @@ class _MenuItem extends StatelessWidget {
           if (trailing != null)
             Text(
               trailing!,
-              style: AppTypography.bodySmall(
+              style: TextStyle(
+                fontSize: 11,
                 color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
               ),
             ),
-          AppSpacing.horizontalSm,
+          AppSpacing.horizontalXs,
           Icon(
             Icons.arrow_forward_ios,
-            size: 14,
+            size: 12,
             color: isDark ? AppColors.neutral600 : AppColors.neutral400,
           ),
         ],
@@ -450,14 +527,17 @@ class _MenuItemSwitch extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
       leading: Icon(
         icon,
         color: isDark ? DarkThemeColors.text : LightThemeColors.text,
-        size: 22,
+        size: 20,
       ),
       title: Text(
         title,
-        style: AppTypography.bodyMedium(
+        style: TextStyle(
+          fontSize: 13,
           color: isDark ? DarkThemeColors.text : LightThemeColors.text,
         ),
       ),

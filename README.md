@@ -1,6 +1,6 @@
-# chihelo_frontend
+# Chibox
 
-A new Flutter project.
+Chibox - Your Premium Shopping Experience.
 
 ## Getting Started
 

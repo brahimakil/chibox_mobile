@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 
 /// LuxeMarket Spacing System
-/// Base unit: 4px
+/// Base unit: 4px - Compact (SHEIN-style)
 class AppSpacing {
   AppSpacing._();
 
   // ============== SPACING VALUES ==============
-  static const double xs = 4.0;
-  static const double sm = 8.0;
-  static const double md = 12.0;
-  static const double base = 16.0;
-  static const double lg = 20.0;
-  static const double xl = 24.0;
-  static const double xxl = 32.0;
-  static const double xxxl = 40.0;
-  static const double huge = 48.0;
+  static const double xs = 3.0;
+  static const double sm = 6.0;
+  static const double md = 10.0;
+  static const double base = 14.0;
+  static const double lg = 18.0;
+  static const double xl = 22.0;
+  static const double xxl = 28.0;
+  static const double xxxl = 36.0;
+  static const double huge = 44.0;
 
   // ============== PADDING ==============
   static const EdgeInsets paddingXs = EdgeInsets.all(xs);
@@ -59,12 +59,12 @@ class AppSpacing {
   static const SizedBox horizontalXl = SizedBox(width: xl);
 
   // ============== BORDER RADIUS ==============
-  static const double radiusSm = 6.0;
-  static const double radiusMd = 8.0;
-  static const double radiusBase = 12.0;
-  static const double radiusLg = 16.0;
-  static const double radiusXl = 20.0;
-  static const double radiusXxl = 24.0;
+  static const double radiusSm = 5.0;
+  static const double radiusMd = 7.0;
+  static const double radiusBase = 10.0;
+  static const double radiusLg = 14.0;
+  static const double radiusXl = 18.0;
+  static const double radiusXxl = 22.0;
   static const double radiusFull = 9999.0;
 
   static const BorderRadius borderRadiusSm = BorderRadius.all(Radius.circular(radiusSm));
@@ -76,25 +76,25 @@ class AppSpacing {
   static const BorderRadius borderRadiusFull = BorderRadius.all(Radius.circular(radiusFull));
 
   // ============== ICON SIZES ==============
-  static const double iconSm = 16.0;
-  static const double iconMd = 20.0;
-  static const double iconBase = 24.0;
-  static const double iconLg = 28.0;
-  static const double iconXl = 32.0;
+  static const double iconSm = 14.0;
+  static const double iconMd = 18.0;
+  static const double iconBase = 22.0;
+  static const double iconLg = 26.0;
+  static const double iconXl = 30.0;
 
   // ============== BUTTON HEIGHTS ==============
-  static const double buttonSmall = 36.0;
-  static const double buttonMedium = 44.0;
-  static const double buttonLarge = 52.0;
+  static const double buttonSmall = 32.0;
+  static const double buttonMedium = 40.0;
+  static const double buttonLarge = 48.0;
 
   // ============== AVATAR SIZES ==============
-  static const double avatarSm = 32.0;
-  static const double avatarMd = 40.0;
-  static const double avatarLg = 56.0;
-  static const double avatarXl = 80.0;
+  static const double avatarSm = 28.0;
+  static const double avatarMd = 36.0;
+  static const double avatarLg = 50.0;
+  static const double avatarXl = 72.0;
 
   // ============== CATEGORY CIRCLE SIZE ==============
-  static const double categorySize = 72.0;
-  static const double categoryImageSize = 48.0;
+  static const double categorySize = 64.0;
+  static const double categoryImageSize = 42.0;
 }
 

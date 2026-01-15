@@ -36,7 +36,9 @@ class ApiService {
   factory ApiService() => _instance;
   ApiService._internal();
 
-  final http.Client _client = http.Client();
+  // Use a new client for each request to avoid connection pooling issues
+  http.Client _createClient() => http.Client();
+  
   String? _accessToken;
   String? _cookie;
 
@@ -99,36 +101,44 @@ class ApiService {
     int retries = 2,
   }) async {
     int attempts = 0;
-    while (attempts <= retries) {
-      attempts++;
-      try {
-        final url = _buildUrl(endpoint, queryParams);
-        debugPrint('API GET (Attempt $attempts): $url');
-        
-        final response = await _client
-            .get(Uri.parse(url), headers: _headers)
-            .timeout(ApiConstants.connectionTimeout);
+    final client = _createClient();
+    
+    try {
+      while (attempts <= retries) {
+        attempts++;
+        try {
+          final url = _buildUrl(endpoint, queryParams);
+          debugPrint('🔴 API GET (Attempt $attempts): $url');
+          debugPrint('🔴 HEADERS: $_headers');
+          
+          final response = await client
+              .get(Uri.parse(url), headers: _headers)
+              .timeout(ApiConstants.connectionTimeout);
 
-        debugPrint('API Response Status: ${response.statusCode}');
-        
-        return _handleResponse<T>(response);
-      } catch (e) {
-        debugPrint('API GET Error (Attempt $attempts): $e');
-        
-        // Only retry on network-related errors
-        bool shouldRetry = e.toString().contains('ClientException') || 
-                           e.toString().contains('SocketException') ||
-                           e.toString().contains('Connection closed');
-                           
-        if (attempts > retries || !shouldRetry) {
-          return ApiResponse.error(_getErrorMessage(e));
+          debugPrint('API Response Status: ${response.statusCode}');
+          
+          return _handleResponse<T>(response);
+        } catch (e) {
+          debugPrint('API GET Error (Attempt $attempts): $e');
+          
+          // Only retry on network-related errors
+          bool shouldRetry = e.toString().contains('ClientException') || 
+                             e.toString().contains('SocketException') ||
+                             e.toString().contains('Connection closed') ||
+                             e.toString().contains('Failed host lookup');
+                             
+          if (attempts > retries || !shouldRetry) {
+            return ApiResponse.error(_getErrorMessage(e));
+          }
+          
+          // Wait before retrying with exponential backoff
+          await Future.delayed(Duration(milliseconds: 500 * attempts));
         }
-        
-        // Wait before retrying
-        await Future.delayed(Duration(milliseconds: 500 * attempts));
       }
+      return ApiResponse.error('Request failed after $retries retries');
+    } finally {
+      client.close(); // Always close the client
     }
-    return ApiResponse.error('Request failed after $retries retries');
   }
 
   /// POST request
@@ -137,9 +147,14 @@ class ApiService {
     Map<String, dynamic>? body,
     Map<String, dynamic>? queryParams,
   }) async {
+    final client = _createClient();
+    
     try {
       final url = _buildUrl(endpoint, queryParams);
-      final response = await _client
+      debugPrint('🔴 API POST: $url');
+      debugPrint('🔴 HEADERS: $_headers');
+      
+      final response = await client
           .post(
             Uri.parse(url),
             headers: _headers,
@@ -150,6 +165,8 @@ class ApiService {
       return _handleResponse<T>(response);
     } catch (e) {
       return ApiResponse.error(_getErrorMessage(e));
+    } finally {
+      client.close();
     }
   }
 
@@ -159,9 +176,11 @@ class ApiService {
     Map<String, dynamic>? body,
     Map<String, dynamic>? queryParams,
   }) async {
+    final client = _createClient();
+    
     try {
       final url = _buildUrl(endpoint, queryParams);
-      final response = await _client
+      final response = await client
           .put(
             Uri.parse(url),
             headers: _headers,
@@ -172,6 +191,8 @@ class ApiService {
       return _handleResponse<T>(response);
     } catch (e) {
       return ApiResponse.error(_getErrorMessage(e));
+    } finally {
+      client.close();
     }
   }
 
@@ -181,9 +202,11 @@ class ApiService {
     Map<String, dynamic>? body,
     Map<String, dynamic>? queryParams,
   }) async {
+    final client = _createClient();
+    
     try {
       final url = _buildUrl(endpoint, queryParams);
-      final response = await _client
+      final response = await client
           .delete(
             Uri.parse(url), 
             headers: _headers,
@@ -194,6 +217,8 @@ class ApiService {
       return _handleResponse<T>(response);
     } catch (e) {
       return ApiResponse.error(_getErrorMessage(e));
+    } finally {
+      client.close();
     }
   }
 

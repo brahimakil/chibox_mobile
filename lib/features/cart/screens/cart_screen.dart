@@ -8,11 +8,13 @@ import '../../../core/theme/theme.dart';
 import '../../../core/services/cart_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/navigation_provider.dart';
+import '../../../core/models/cart_model.dart';
 import '../../../shared/widgets/widgets.dart';
 import '../../../shared/widgets/guest_guard.dart';
 import '../../../core/models/product_model.dart';
 import '../../product/screens/product_details_screen.dart';
 import '../../navigation/main_shell.dart';
+import 'checkout_screen.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -25,6 +27,8 @@ class _CartScreenState extends State<CartScreen> {
   int _lastIndex = -1;
   // Key to force animation restart
   Key _animationKey = UniqueKey();
+  // Selected cart item IDs for checkout
+  Set<int> _selectedItemIds = {};
 
   @override
   void initState() {
@@ -41,7 +45,7 @@ class _CartScreenState extends State<CartScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final navProvider = Provider.of<NavigationProvider>(context);
-    // Check if we just switched TO this tab (index 3 for Bag)
+    // Check if we just switched TO this tab (index 3 for Cart)
     if (navProvider.currentIndex == 3 && _lastIndex != 3) {
       _refreshData();
       setState(() {
@@ -56,9 +60,68 @@ class _CartScreenState extends State<CartScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final cartService = Provider.of<CartService>(context, listen: false);
-        cartService.fetchCart(silent: cartService.items.isNotEmpty);
+        cartService.fetchCart(silent: cartService.items.isNotEmpty).then((_) {
+          // Select all items by default when cart loads
+          if (mounted) {
+            setState(() {
+              _selectedItemIds = cartService.items.map((item) => item.id).toSet();
+            });
+          }
+        });
       }
     });
+  }
+
+  void _toggleItemSelection(int itemId) {
+    setState(() {
+      if (_selectedItemIds.contains(itemId)) {
+        _selectedItemIds.remove(itemId);
+      } else {
+        _selectedItemIds.add(itemId);
+      }
+    });
+  }
+
+  void _toggleSelectAll(List<CartItem> items) {
+    setState(() {
+      if (_selectedItemIds.length == items.length) {
+        _selectedItemIds.clear();
+      } else {
+        _selectedItemIds = items.map((item) => item.id).toSet();
+      }
+    });
+  }
+
+  double _calculateSelectedTotal(CartService cartService) {
+    return cartService.items
+        .where((item) => _selectedItemIds.contains(item.id))
+        .fold(0.0, (sum, item) => sum + item.subtotal);
+  }
+
+  void _confirmDeleteItem(CartService cartService, int itemId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Item'),
+        content: const Text('Are you sure you want to remove this item from your cart?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              cartService.removeFromCart(itemId);
+              setState(() {
+                _selectedItemIds.remove(itemId);
+              });
+            },
+            child: const Text('Remove', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -71,7 +134,7 @@ class _CartScreenState extends State<CartScreen> {
       backgroundColor: isDark ? DarkThemeColors.background : LightThemeColors.background,
       appBar: AppBar(
         title: Text(
-          'My Bag',
+          'My Cart',
           style: AppTypography.headingMedium(
             color: isDark ? DarkThemeColors.text : LightThemeColors.text,
           ),
@@ -154,15 +217,49 @@ class _CartScreenState extends State<CartScreen> {
             );
           }
 
+          // Ensure selected items are synced when cart updates
+          if (_selectedItemIds.isEmpty && cartService.items.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _selectedItemIds = cartService.items.map((item) => item.id).toSet();
+                });
+              }
+            });
+          }
+          // Remove any selected IDs that no longer exist in cart
+          _selectedItemIds.removeWhere((id) => !cartService.items.any((item) => item.id == id));
+
           return Column(
             children: [
+              // Select All Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                child: Row(
+                  children: [
+                    Checkbox(
+                      value: _selectedItemIds.length == cartService.items.length && cartService.items.isNotEmpty,
+                      onChanged: (_) => _toggleSelectAll(cartService.items),
+                      activeColor: AppColors.primary500,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    ),
+                    Text(
+                      'Select All (${_selectedItemIds.length}/${cartService.items.length})',
+                      style: AppTypography.bodyMedium(
+                        color: isDark ? DarkThemeColors.text : LightThemeColors.text,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               Expanded(
                 child: ListView.separated(
-                  padding: const EdgeInsets.all(AppSpacing.md),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
                   itemCount: cartService.items.length,
                   separatorBuilder: (context, index) => AppSpacing.verticalMd,
                   itemBuilder: (context, index) {
                     final item = cartService.items[index];
+                    final isSelected = _selectedItemIds.contains(item.id);
                     return GestureDetector(
                       onTap: () {
                         // Create a minimal Product object to navigate
@@ -188,17 +285,27 @@ class _CartScreenState extends State<CartScreen> {
                           color: isDark ? DarkThemeColors.surface : LightThemeColors.surface,
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: AppShadows.sm,
+                          border: isSelected 
+                              ? Border.all(color: AppColors.primary500.withOpacity(0.5), width: 1.5)
+                              : null,
                         ),
                         child: Row(
                           children: [
+                            // Checkbox
+                            Checkbox(
+                              value: isSelected,
+                              onChanged: (_) => _toggleItemSelection(item.id),
+                              activeColor: AppColors.primary500,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                            ),
                             // Image
                             ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: item.mainImage.isNotEmpty
                                   ? CachedNetworkImage(
                                       imageUrl: item.mainImage,
-                                      width: 80,
-                                      height: 80,
+                                      width: 70,
+                                      height: 70,
                                       fit: BoxFit.cover,
                                       placeholder: (context, url) => Container(
                                         color: isDark ? AppColors.neutral800 : AppColors.neutral100,
@@ -206,8 +313,8 @@ class _CartScreenState extends State<CartScreen> {
                                       errorWidget: (context, url, error) => const Icon(Icons.error),
                                     )
                                   : Container(
-                                      width: 80,
-                                      height: 80,
+                                      width: 70,
+                                      height: 70,
                                       color: isDark ? AppColors.neutral800 : AppColors.neutral100,
                                       child: Icon(
                                         Iconsax.image,
@@ -215,7 +322,7 @@ class _CartScreenState extends State<CartScreen> {
                                       ),
                                     ),
                             ),
-                            AppSpacing.horizontalMd,
+                            AppSpacing.horizontalSm,
                             // Details
                             Expanded(
                               child: Column(
@@ -239,7 +346,7 @@ class _CartScreenState extends State<CartScreen> {
                                         icon: const Icon(Iconsax.close_circle, size: 20, color: AppColors.neutral400),
                                         padding: EdgeInsets.zero,
                                         constraints: const BoxConstraints(),
-                                        onPressed: () => cartService.removeFromCart(item.id),
+                                        onPressed: () => _confirmDeleteItem(cartService, item.id),
                                       ),
                                     ],
                                   ),
@@ -276,7 +383,7 @@ class _CartScreenState extends State<CartScreen> {
                                                 if (item.quantity > 1) {
                                                   cartService.updateCartItem(item.id, item.quantity - 1);
                                                 } else {
-                                                  cartService.removeFromCart(item.id);
+                                                  _confirmDeleteItem(cartService, item.id);
                                                 }
                                               },
                                             ),
@@ -332,14 +439,26 @@ class _CartScreenState extends State<CartScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Total',
-                            style: AppTypography.headingSmall(
-                              color: isDark ? DarkThemeColors.text : LightThemeColors.text,
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Total (${_selectedItemIds.length} items)',
+                                style: AppTypography.headingSmall(
+                                  color: isDark ? DarkThemeColors.text : LightThemeColors.text,
+                                ),
+                              ),
+                              if (_selectedItemIds.length != cartService.items.length)
+                                Text(
+                                  '${cartService.items.length - _selectedItemIds.length} items not selected',
+                                  style: AppTypography.bodySmall(
+                                    color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
+                                  ),
+                                ),
+                            ],
                           ),
                           Text(
-                            '${cartService.cartData?.currencySymbol ?? '\$'}${(cartService.cartData?.total ?? 0).toStringAsFixed(2)}',
+                            '${cartService.cartData?.currencySymbol ?? '\$'}${_calculateSelectedTotal(cartService).toStringAsFixed(2)}',
                             style: AppTypography.headingSmall(
                               color: AppColors.primary500,
                             ),
@@ -348,15 +467,20 @@ class _CartScreenState extends State<CartScreen> {
                       ),
                       AppSpacing.verticalLg,
                       AppButton(
-                        text: 'Checkout',
-                        isLoading: cartService.isLoading || cartService.isUpdating,
-                        isDisabled: cartService.isLoading || cartService.isUpdating,
-                        onPressed: () {
+                        text: 'Checkout (${_selectedItemIds.length})',
+                        isLoading: false, // Never show loading - let user tap anytime
+                        isDisabled: _selectedItemIds.isEmpty,
+                        onPressed: _selectedItemIds.isEmpty ? null : () {
                           final authService = context.read<AuthService>();
                           if (authService.isGuest) {
                             showGuestLoginDialog(context, 'Checkout');
                           } else {
-                            // TODO: Implement checkout
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CheckoutScreen(selectedCartItemIds: _selectedItemIds.toList()),
+                              ),
+                            );
                           }
                         },
                       ),
@@ -386,14 +510,14 @@ class _QuantityButton extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(6),
       child: Container(
-        width: 32,
-        height: 32,
+        width: 28,
+        height: 28,
         alignment: Alignment.center,
         child: Icon(
           icon,
-          size: 16,
+          size: 14,
           color: isDark ? Colors.white : Colors.black,
         ),
       ),

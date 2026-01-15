@@ -7,7 +7,9 @@ import '../../../core/models/address_model.dart';
 import 'add_address_screen.dart';
 
 class AddressListScreen extends StatefulWidget {
-  const AddressListScreen({super.key});
+  final bool selectionMode;
+  
+  const AddressListScreen({super.key, this.selectionMode = false});
 
   @override
   State<AddressListScreen> createState() => _AddressListScreenState();
@@ -32,7 +34,7 @@ class _AddressListScreenState extends State<AddressListScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          'My Addresses',
+          widget.selectionMode ? 'Select Address' : 'My Addresses',
           style: AppTypography.headingSmall(
             color: theme.textTheme.titleLarge?.color,
           ),
@@ -66,17 +68,29 @@ class _AddressListScreenState extends State<AddressListScreen> {
                   separatorBuilder: (_, __) => const SizedBox(height: 16),
                   itemBuilder: (context, index) {
                     final address = addressService.addresses[index];
-                    return _AddressCard(address: address);
+                    return _AddressCard(
+                      address: address,
+                      selectionMode: widget.selectionMode,
+                      onSelect: widget.selectionMode 
+                          ? () => Navigator.pop(context, address)
+                          : null,
+                    );
                   },
                 ),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(16),
         child: ElevatedButton(
-          onPressed: () {
-            Navigator.push(
+          onPressed: () async {
+            final result = await Navigator.push<Address>(
               context,
-              MaterialPageRoute(builder: (_) => const AddAddressScreen()),
+              MaterialPageRoute(
+                builder: (_) => AddAddressScreen(fromCheckout: widget.selectionMode),
+              ),
             );
+            // If in selection mode and got a new address back, return it to checkout
+            if (widget.selectionMode && result != null && mounted) {
+              Navigator.pop(context, result);
+            }
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary500,
@@ -101,8 +115,14 @@ class _AddressListScreenState extends State<AddressListScreen> {
 
 class _AddressCard extends StatelessWidget {
   final Address address;
+  final bool selectionMode;
+  final VoidCallback? onSelect;
 
-  const _AddressCard({required this.address});
+  const _AddressCard({
+    required this.address,
+    this.selectionMode = false,
+    this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -110,35 +130,37 @@ class _AddressCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     return InkWell(
-      onTap: address.isDefault
-          ? null
-          : () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Set as Default'),
-                  content: Text('This address (${address.routeName}) will be your default address.'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
+      onTap: selectionMode 
+          ? onSelect
+          : (address.isDefault
+              ? null
+              : () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Set as Default'),
+                      content: Text('This address (${address.routeName}) will be your default address.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(context);
+                            final success = await context.read<AddressService>().setDefaultAddress(address.id);
+                            if (success && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Default address updated')),
+                              );
+                            }
+                          },
+                          child: const Text('Set Default'),
+                        ),
+                      ],
                     ),
-                    TextButton(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        final success = await context.read<AddressService>().setDefaultAddress(address.id);
-                        if (success && context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Default address updated')),
-                          );
-                        }
-                      },
-                      child: const Text('Set Default'),
-                    ),
-                  ],
-                ),
-              );
-            },
+                  );
+                }),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(16),

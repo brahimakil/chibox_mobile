@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "chihelo_frontend" "\0"
+            VALUE "CompanyName", "Chibox" "\0"
+            VALUE "FileDescription", "Chibox" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "chihelo_frontend" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "chihelo_frontend.exe" "\0"
-            VALUE "ProductName", "chihelo_frontend" "\0"
+            VALUE "InternalName", "Chibox" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025 Chibox. All rights reserved." "\0"
+            VALUE "OriginalFilename", "Chibox.exe" "\0"
+            VALUE "ProductName", "Chibox" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -175,13 +175,12 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
                         builder: (context) =>
                             ProductDetailsScreen(product: product),
                       ),
-                    ).then((_) {
-                      if (mounted) {
-                        context.read<HomeService>().fetchHomeData();
-                      }
-                    });
+                    );
+                    // Removed .then(() => fetchHomeData()) - it was overwriting wishlist state
+                    // ProductCard already syncs state via WishlistHelper.onStatusChanged stream
                   },
                 )
+
                     .animate()
                     .fadeIn(delay: Duration(milliseconds: 50 * (index % 10)))
                     .slideY(begin: 0.1, end: 0);

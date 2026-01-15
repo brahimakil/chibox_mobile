@@ -6,7 +6,6 @@ import '../../../core/theme/theme.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../shared/widgets/widgets.dart';
 import 'otp_verification_screen.dart';
-import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -39,43 +38,33 @@ class _LoginScreenState extends State<LoginScreen> {
     return true;
   }
 
-  Future<void> _handleLogin() async {
+  Future<void> _handleContinue() async {
     if (!_validatePhone()) return;
 
     final authService = context.read<AuthService>();
-    final response = await authService.login(
+    final response = await authService.loginOrRegister(
       countryCode: _countryCode,
       phoneNumber: _phoneController.text,
     );
 
     if (mounted) {
-      if (response.success) {
+      if (response.success && response.data != null) {
+        final userId = response.data!['user_id'] as int;
+        final isNewUser = response.data!['is_new_user'] as bool;
+        
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => OtpVerificationScreen(
-              userId: response.data!,
+              userId: userId,
               countryCode: _countryCode,
               phoneNumber: _phoneController.text,
+              isNewUser: isNewUser,
             ),
           ),
         );
       } else {
-        if (response.statusCode == 404) {
-          // User not found, prompt to register
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('User not found. Please register.'),
-              action: SnackBarAction(
-                label: 'Register',
-                onPressed: _navigateToSignup,
-              ),
-            ),
-          );
-          _navigateToSignup();
-        } else {
-          _showError(response.message);
-        }
+        _showError(response.message);
       }
     }
   }
@@ -88,13 +77,6 @@ class _LoginScreenState extends State<LoginScreen> {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: AppSpacing.borderRadiusMd),
       ),
-    );
-  }
-
-  void _navigateToSignup() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const SignupScreen()),
     );
   }
 
@@ -131,7 +113,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       AppSpacing.verticalXl,
                       
                       Text(
-                        'Welcome Back',
+                        'Welcome',
                       style: AppTypography.displaySmall(
                         color: isDark ? DarkThemeColors.text : LightThemeColors.text,
                       ),
@@ -141,7 +123,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         .slideY(begin: 0.3, end: 0),
                     AppSpacing.verticalSm,
                     Text(
-                      'Sign in to continue shopping',
+                      'Enter your phone number to continue',
                       style: AppTypography.bodyMedium(
                         color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
                       ),
@@ -219,42 +201,17 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
               AppSpacing.verticalXl,
               
-              // Login Button
+              // Continue Button
               AppButton(
                 text: 'Continue',
-                onPressed: _handleLogin,
+                onPressed: _handleContinue,
                 isLoading: authService.isLoading,
                 rightIcon: Iconsax.arrow_right_3,
               )
                   .animate()
                   .fadeIn(delay: 600.ms)
                   .slideY(begin: 0.3, end: 0),
-              AppSpacing.verticalXxl,
-              
-              // Sign Up Link
-              Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Don't have an account? ",
-                      style: AppTypography.bodyMedium(
-                        color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: _navigateToSignup,
-                      child: Text(
-                        'Sign Up',
-                        style: AppTypography.labelLarge(color: AppColors.primary500),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-                  .animate()
-                  .fadeIn(delay: 900.ms),
-              AppSpacing.verticalLg,
+              AppSpacing.verticalXl,
 
               // Continue as Guest
               Center(
@@ -276,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ).copyWith(decoration: TextDecoration.underline),
                   ),
                 ),
-              ).animate().fadeIn(delay: 1000.ms),
+              ).animate().fadeIn(delay: 700.ms),
               
               AppSpacing.verticalXxl,
             ],
@@ -287,5 +244,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
-

@@ -145,13 +145,11 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
                           MaterialPageRoute(
                             builder: (context) => ProductDetailsScreen(product: product),
                           ),
-                        ).then((_) {
-                          if (mounted) {
-                            final idToFetch = (widget.boardId == -1) ? null : widget.boardId;
-                            context.read<WishlistService>().fetchWishlist(boardId: idToFetch);
-                          }
-                        });
+                        );
+                        // Removed .then() refetch - WishlistService tracks items via local state
+                        // and WishlistHelper broadcasts updates via stream
                       },
+
                       onMenuTap: () {
                         showModalBottomSheet(
                           context: context,

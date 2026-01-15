@@ -81,12 +81,12 @@ class SectionAction extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           color: bgColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: bgColor.withOpacity(0.2),
             width: 1,
@@ -98,15 +98,17 @@ class SectionAction extends StatelessWidget {
             if (text != null)
               Text(
                 text!,
-                style: AppTypography.labelMedium(
+                style: TextStyle(
+                  fontSize: 11,
                   color: baseColor,
-                ).copyWith(fontWeight: FontWeight.w600),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             if (icon != null) ...[
-              if (text != null) const SizedBox(width: 4),
+              if (text != null) const SizedBox(width: 3),
               Icon(
                 icon,
-                size: 16,
+                size: 14,
                 color: baseColor,
               ),
             ],

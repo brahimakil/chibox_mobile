@@ -4,7 +4,7 @@ class ApiConstants {
 
   // Base URL
   static const String baseUrl = 'https://cms2.devback.website';
-
+  
   // API Version Prefix
   static const String apiPrefix = '/v3_0_0';
 
@@ -29,6 +29,10 @@ class ApiConstants {
   // ============== APP ENDPOINTS ==============
   static const String getHomeScreen = '$apiPrefix-app/get-home-screen';
   static const String getBadgeCount = '$apiPrefix-app/get-badge-count';
+  static const String getHotSellings = '$apiPrefix-app/get-hot-sellings';
+  static const String getOneDollarProducts = '$apiPrefix-app/get-one-dollar-products';
+  static const String getSplashAd = '$apiPrefix-app/get-splash-ad';
+  static const String trackSplashAd = '$apiPrefix-app/track-splash-ad';
 
   // ============== CART ENDPOINTS ==============
   static const String addToCart = '$apiPrefix-cart/add-to-cart';
@@ -40,6 +44,8 @@ class ApiConstants {
   // ============== CATEGORY ENDPOINTS ==============
   static const String getAllCategories = '$apiPrefix-category/get-all-categories';
   static const String getCategoryById = '$apiPrefix-category/get-category-by-id';
+  static const String getSubcategories = '$apiPrefix-category/get-subcategories';
+  static const String searchCategories = '$apiPrefix-category/search-categories';
 
   // ============== FAVORITE ENDPOINTS ==============
   static const String toggleFavorite = '$apiPrefix-favorite/toggle-favorite';
@@ -54,12 +60,22 @@ class ApiConstants {
   static const String markAsSeen = '$apiPrefix-notification/mark-as-seen';
   static const String markAllAsSeen = '$apiPrefix-notification/mark-all-as-seen';
   static const String getUnreadCount = '$apiPrefix-notification/get-unread-count';
+  static const String updateFcmToken = '$apiPrefix-notification/update-fcm-token';
 
   // ============== ORDER ENDPOINTS ==============
   static const String checkout = '$apiPrefix-order/checkout';
   static const String getOrders = '$apiPrefix-order/get-orders';
   static const String getOrderDetails = '$apiPrefix-order/get-order-details';
   static const String cancelOrder = '$apiPrefix-order/cancel-order';
+
+  // ============== PAYMENT ENDPOINTS ==============
+  static const String paymentInitiate = '$apiPrefix-payment/initiate';
+  static const String paymentInitiateCheckout = '$apiPrefix-payment/initiate-checkout'; // NEW: Payment before order
+  static const String paymentCallback = '$apiPrefix-payment/callback';
+  static const String paymentStatus = '$apiPrefix-payment/status';
+  static const String paymentVerify = '$apiPrefix-payment/verify';
+  static const String paymentRetry = '$apiPrefix-payment/retry';
+  static const String paymentCancel = '$apiPrefix-payment/cancel';
 
   // ============== PRODUCT ENDPOINTS ==============
   static const String getProducts = '$apiPrefix-product/get-products';

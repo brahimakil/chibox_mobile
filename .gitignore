@@ -10,6 +10,14 @@
 .svn/
 migrate_working_dir/
 
+# Firebase & Secrets - NEVER commit these!
+**/firebase*.json
+**/*firebase*.json
+**/google-services.json
+**/GoogleService-Info.plist
+*.json.bak
+chibox-c9d23-firebase-adminsdk-fbsvc-*.json
+
 # IntelliJ related
 *.iml
 *.ipr

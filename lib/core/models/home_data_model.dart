@@ -10,6 +10,8 @@ class HomeData {
   final List<ProductSection> productSections;
   final List<Product> randomProducts;
   final List<FlashSale> flashSales;
+  final List<Product> hotSellings; // Hot selling products with SHEIN-like rotation
+  final List<Product> oneDollarProducts; // Products priced $1 or less
   final PaginationInfo pagination;
 
   const HomeData({
@@ -19,6 +21,8 @@ class HomeData {
     this.productSections = const [],
     this.randomProducts = const [],
     this.flashSales = const [],
+    this.hotSellings = const [],
+    this.oneDollarProducts = const [],
     required this.pagination,
   });
 
@@ -68,6 +72,22 @@ class HomeData {
       parsedFlashSales = [FlashSale.fromJson(json['flash_sale'])];
     }
 
+    // Handle hot_sellings (list of hot selling products with SHEIN-like rotation)
+    List<Product> parsedHotSellings = [];
+    if (json['hot_sellings'] != null && json['hot_sellings'] is List) {
+      parsedHotSellings = (json['hot_sellings'] as List)
+          .map((p) => Product.fromJson(p))
+          .toList();
+    }
+
+    // Handle one_dollar_products (products priced $1 or less)
+    List<Product> parsedOneDollarProducts = [];
+    if (json['one_dollar_products'] != null && json['one_dollar_products'] is List) {
+      parsedOneDollarProducts = (json['one_dollar_products'] as List)
+          .map((p) => Product.fromJson(p))
+          .toList();
+    }
+
     return HomeData(
       banners: json['banners'] != null 
           ? (json['banners'] as List).map((b) => HomeBanner.fromJson(b)).toList() 
@@ -85,6 +105,8 @@ class HomeData {
           : [],
       randomProducts: parsedRandomProducts,
       flashSales: parsedFlashSales,
+      hotSellings: parsedHotSellings,
+      oneDollarProducts: parsedOneDollarProducts,
       pagination: parsedPagination,
     );
   }

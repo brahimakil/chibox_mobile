@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../services/wishlist_service.dart';
 import '../services/home_service.dart';
 import '../services/auth_service.dart';
+import '../services/cache_service.dart';
 import '../../features/wishlist/widgets/add_to_wishlist_sheet.dart';
 import '../../shared/widgets/guest_guard.dart';
 
@@ -18,6 +19,28 @@ class WishlistHelper {
   static final StreamController<ProductLikeUpdate> _controller = StreamController.broadcast();
   static Stream<ProductLikeUpdate> get onStatusChanged => _controller.stream;
 
+  // Local cache of like states - this is the single source of truth for UI
+  // Key: productId, Value: isLiked
+  static final Map<int, bool> _likeStateCache = {};
+
+  /// Get the like state for a product (returns null if not in cache)
+  static bool? getLikeState(int productId) => _likeStateCache[productId];
+
+  /// Set the like state for a product (called when we know the definitive state)
+  static void setLikeState(int productId, bool isLiked) {
+    _likeStateCache[productId] = isLiked;
+  }
+
+  /// Initialize like states from wishlist (call this after fetching wishlist)
+  static void initializeFromWishlist(List<int> likedProductIds) {
+    for (final id in likedProductIds) {
+      _likeStateCache[id] = true;
+    }
+  }
+
+  /// Clear the cache (call on logout)
+  static void clearCache() => _likeStateCache.clear();
+
   /// Toggles favorite status and ensures all services are updated
   static Future<bool> toggleFavorite(BuildContext context, int productId, {bool? currentIsLiked}) async {
     final authService = context.read<AuthService>();
@@ -29,18 +52,16 @@ class WishlistHelper {
     final wishlistService = context.read<WishlistService>();
     final homeService = context.read<HomeService>();
 
-    // If current status is not provided, try to guess or assume false (add)
-    // But usually the caller knows.
-    // If we don't know, we can't do optimistic updates easily.
-    
-    bool isLiked = currentIsLiked ?? false; // Default to false if unknown
+    bool isLiked = currentIsLiked ?? (_likeStateCache[productId] ?? false);
 
     if (isLiked) {
       // Remove
       final success = await wishlistService.toggleFavorite(productId);
       if (success) {
+        _likeStateCache[productId] = false; // Update local cache
         homeService.updateProductLikeStatus(productId, false);
         _controller.add(ProductLikeUpdate(productId, false));
+        CacheService.clearCategoryProductsCache();
         return true;
       }
     } else {
@@ -53,8 +74,10 @@ class WishlistHelper {
       );
       
       if (result == true) {
+        _likeStateCache[productId] = true; // Update local cache
         homeService.updateProductLikeStatus(productId, true);
         _controller.add(ProductLikeUpdate(productId, true));
+        CacheService.clearCategoryProductsCache();
         return true;
       }
     }
@@ -69,8 +92,10 @@ class WishlistHelper {
 
     final success = await wishlistService.toggleFavorite(productId);
     if (success) {
+      _likeStateCache[productId] = false; // Update local cache
       homeService.updateProductLikeStatus(productId, false);
       _controller.add(ProductLikeUpdate(productId, false));
+      CacheService.clearCategoryProductsCache();
       return true;
     }
     return false;

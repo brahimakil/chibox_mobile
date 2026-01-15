@@ -47,6 +47,8 @@ class HomeService extends ChangeNotifier {
   List<ProductCategory> get categories => _homeData?.categories ?? [];
   List<ProductSection> get productSections => _homeData?.productSections ?? [];
   List<FlashSale> get flashSales => _homeData?.flashSales ?? [];
+  List<Product> get hotSellings => _homeData?.hotSellings ?? []; // Hot selling products
+  List<Product> get oneDollarProducts => _homeData?.oneDollarProducts ?? []; // $1 deals
   FlashSale? get flashSale => _homeData?.flashSale; // Keep for backward compatibility
 
   /// Update product like status locally
@@ -99,6 +101,12 @@ class HomeService extends ChangeNotifier {
         );
       }).toList();
 
+      // Update hot sellings
+      final newHotSellings = updateList(_homeData!.hotSellings);
+
+      // Update one dollar products
+      final newOneDollarProducts = updateList(_homeData!.oneDollarProducts);
+
       _homeData = HomeData(
         banners: _homeData!.banners,
         gridElements: _homeData!.gridElements,
@@ -106,6 +114,8 @@ class HomeService extends ChangeNotifier {
         productSections: newSections,
         randomProducts: newRandom,
         flashSales: newFlashSales,
+        hotSellings: newHotSellings,
+        oneDollarProducts: newOneDollarProducts,
         pagination: _homeData!.pagination,
       );
     }
@@ -127,9 +137,11 @@ class HomeService extends ChangeNotifier {
       _currentPage = 1;
       _allProducts = [];
       _hasMoreProducts = true;
-      // Clear cache on manual refresh
-      await CacheService.clearCache();
-      debugPrint('🔄 Manual refresh - cache cleared');
+      _consecutiveErrors = 0; // Reset error counter on refresh
+      _lastErrorTime = null;
+      _isPrefetching = false;
+      // Only reset in-memory state on manual refresh, don't clear disk cache
+      debugPrint('🔄 Manual refresh - resetting in-memory state');
     }
 
     // If we are already loading and it's NOT a refresh, skip.
@@ -140,21 +152,24 @@ class HomeService extends ChangeNotifier {
     _error = null;
 
     try {
-      // Try to load from cache first (only if not refreshing)
-      // if (!refresh && _currentPage == 1) {
-      //   final cachedData = await CacheService.getCachedHomeData();
-      //   if (cachedData != null) {
-      //     debugPrint('📦 Loading from cache...');
-      //     _homeData = await compute(_parseHomeData, cachedData);
-      //     _allProducts = _homeData!.randomProducts;
-      //     _hasMoreProducts = _homeData!.pagination.hasNext;
-      //     _currentPage++;
-      //     _setLoading(false);
-      //     notifyListeners();
-      //     debugPrint('✅ Loaded from cache: ${_homeData!.randomProducts.length} products');
-      //     return;
-      //   }
-      // }
+      // STALE-WHILE-REVALIDATE: Show cached data immediately, then fetch fresh in background
+      if (!refresh && _currentPage == 1 && _homeData == null) {
+        final cachedData = await CacheService.getCachedHomeData();
+        if (cachedData != null) {
+          debugPrint('📦 Loading from cache (instant UI)...');
+          _homeData = await compute(_parseHomeData, cachedData);
+          _allProducts = _homeData!.randomProducts;
+          _hasMoreProducts = _homeData!.pagination.hasNext;
+          _currentPage = 2; // Ready for page 2 on next load
+          _setLoading(false);
+          notifyListeners();
+          debugPrint('✅ Cached data shown: ${_homeData!.randomProducts.length} products, hasMore=$_hasMoreProducts, nextPage=$_currentPage');
+          
+          // Continue to fetch fresh data in background (don't return!)
+          _fetchFreshDataInBackground();
+          return;
+        }
+      }
 
       debugPrint('🌐 Fetching home data from API: ${ApiConstants.baseUrl}${ApiConstants.getHomeScreen}');
       
@@ -162,7 +177,7 @@ class HomeService extends ChangeNotifier {
         ApiConstants.getHomeScreen,
         queryParams: {
           'page': _currentPage,
-          'per_page': 20,
+          'per_page': 30,
         },
       );
       
@@ -193,13 +208,65 @@ class HomeService extends ChangeNotifier {
     _setLoading(false);
   }
 
+  /// Fetch fresh data in background without blocking UI
+  /// Used for stale-while-revalidate pattern
+  Future<void> _fetchFreshDataInBackground() async {
+    try {
+      debugPrint('🔄 Background refresh: fetching fresh data...');
+      
+      final response = await _api.get(
+        ApiConstants.getHomeScreen,
+        queryParams: {
+          'page': 1,
+          'per_page': 30,
+        },
+      );
 
+      if (response.success && response.data != null) {
+        // Cache the fresh data
+        await CacheService.cacheHomeData(response.data!);
+        
+        // Parse on background thread
+        final freshData = await compute(_parseHomeData, response.data!);
+        
+        // Only update if data is actually different (avoid unnecessary rebuilds)
+        final oldProductCount = _homeData?.randomProducts.length ?? 0;
+        final newProductCount = freshData.randomProducts.length;
+        
+        _homeData = freshData;
+        _allProducts = freshData.randomProducts;
+        _hasMoreProducts = freshData.pagination.hasNext;
+        _currentPage = 2; // Ready for page 2 on next load
+        
+        debugPrint('✅ Background refresh complete: $newProductCount products (was $oldProductCount)');
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('⚠️ Background refresh failed (non-blocking): $e');
+      // Don't set error - user already has cached data showing
+    }
+  }
+
+
+  // Track consecutive errors for backoff
+  int _consecutiveErrors = 0;
+  DateTime? _lastErrorTime;
 
   /// Load more products (infinite scroll)
   Future<void> loadMoreProducts() async {
-    if (_isLoadingMore || !_hasMoreProducts || _isPrefetching) {
-      debugPrint('⚠️ Skipping load more: isLoadingMore=$_isLoadingMore, hasMore=$_hasMoreProducts, isPrefetching=$_isPrefetching');
+    // Skip if already loading or prefetching, or no more products
+    if (_isLoadingMore || _isPrefetching || !_hasMoreProducts) {
       return;
+    }
+
+    // Backoff after consecutive errors (wait longer before retrying)
+    if (_consecutiveErrors > 0 && _lastErrorTime != null) {
+      final waitTime = Duration(seconds: _consecutiveErrors * 2); // 2s, 4s, 6s...
+      final elapsed = DateTime.now().difference(_lastErrorTime!);
+      if (elapsed < waitTime) {
+        debugPrint('⏳ Waiting ${(waitTime - elapsed).inSeconds}s before retry (errors: $_consecutiveErrors)');
+        return;
+      }
     }
 
     _isLoadingMore = true;
@@ -213,11 +280,15 @@ class HomeService extends ChangeNotifier {
         ApiConstants.getHomeScreen,
         queryParams: {
           'page': _currentPage,
-          'per_page': 20,
+          'per_page': 30,
         },
       );
 
       if (response.success && response.data != null) {
+        // Success! Reset error counter
+        _consecutiveErrors = 0;
+        _lastErrorTime = null;
+        
         // Parse full home data to handle complex structure of random_products
         final homeData = await compute(_parseHomeData, response.data!);
         final newProducts = homeData.randomProducts;
@@ -232,11 +303,13 @@ class HomeService extends ChangeNotifier {
         debugPrint('📊 Has more products: $_hasMoreProducts');
       } else {
         debugPrint('⚠️ Load more failed: ${response.message}');
-        _hasMoreProducts = false;
+        _consecutiveErrors++;
+        _lastErrorTime = DateTime.now();
       }
     } catch (e) {
       debugPrint('❌ Error loading more products: $e');
-      _hasMoreProducts = false; // Stop trying on error
+      _consecutiveErrors++;
+      _lastErrorTime = DateTime.now();
     }
 
     _isLoadingMore = false;
@@ -317,48 +390,48 @@ class HomeService extends ChangeNotifier {
   }
 
   /// Smart prefetch - called when user scrolls near bottom
+  /// Prefetches next page in background and buffers it for instant use by loadMoreProducts
   Future<void> prefetchNextPage() async {
     // Don't prefetch if:
     // - Already prefetching
     // - No more products
-    // - Currently loading
-    // - Loading more
+    // - Currently loading initial data
+    // - Currently loading more (let loadMoreProducts handle it)
     if (_isPrefetching || !_hasMoreProducts || _isLoading || _isLoadingMore) {
-      return;
+      return; // Silent skip - prefetch is opportunistic
     }
 
     _isPrefetching = true;
-    notifyListeners();
+    notifyListeners(); // Show skeleton during prefetch
 
     try {
       debugPrint('⚡ Smart prefetch triggered: Page $_currentPage');
       
+      // Use same API as loadMoreProducts for consistency
       final response = await _api.get(
-        ApiConstants.getProducts,
+        ApiConstants.getHomeScreen,
         queryParams: {
           'page': _currentPage,
-          'per_page': 10,
+          'per_page': 30,
         },
       );
 
       if (response.success && response.data != null) {
-        final productsJson = response.data!['products'] as List?;
-        final pagination = response.data!['pagination'];
+        // Parse full home data to handle complex structure of random_products
+        final homeData = await compute(_parseHomeData, response.data!);
+        final newProducts = homeData.randomProducts;
         
-        if (productsJson != null && productsJson.isNotEmpty) {
-          // Parse products on background thread
-          final newProducts = await compute(_parseProducts, productsJson);
+        if (newProducts.isNotEmpty) {
+          // Apply prefetched data directly to list (instant display)
           _allProducts = [..._allProducts, ...newProducts];
           _currentPage++;
-          debugPrint('✅ Prefetched ${newProducts.length} products. Total: ${_allProducts.length}');
-        }
-        
-        if (pagination != null) {
-          _hasMoreProducts = pagination['has_next'] == true || pagination['has_next'] == 1;
+          _hasMoreProducts = homeData.pagination.hasNext;
+          debugPrint('✅ Prefetched and applied ${newProducts.length} products. Total: ${_allProducts.length}');
         }
       }
     } catch (e) {
       debugPrint('❌ Error prefetching: $e');
+      // Don't stop pagination on prefetch errors - it's just optimization
     }
 
     _isPrefetching = false;
@@ -383,6 +456,8 @@ class HomeService extends ChangeNotifier {
   }
 
   /// Update a product in all caches (used when product details are fetched with translation)
+  /// NOTE: Does NOT call notifyListeners() to avoid expensive UI rebuilds.
+  /// The cache is updated silently - UI will see changes on next navigation.
   void updateProductInCache(Product updatedProduct) {
     bool changed = false;
 
@@ -421,6 +496,7 @@ class HomeService extends ChangeNotifier {
             productSections: _homeData!.productSections,
             randomProducts: newRandom,
             flashSales: _homeData!.flashSales,
+            hotSellings: _homeData!.hotSellings,
             pagination: _homeData!.pagination,
           );
           changed = true;
@@ -431,15 +507,136 @@ class HomeService extends ChangeNotifier {
 
     if (changed) {
       debugPrint('📦 Updated product ${updatedProduct.id} in HomeService cache');
-      notifyListeners();
+      // OPTIMIZATION: Don't call notifyListeners() here!
+      // This was causing expensive UI rebuilds (171+ product checks per notification).
+      // The cache is updated - UI will see changes on next navigation/refresh.
     }
+  }
+
+  /// Get hot sellings products (Paginated with sorting)
+  /// Supports sort: 'sales_desc' (default), 'price_asc', 'price_desc'
+  Future<Map<String, dynamic>> getHotSellingsPaginated({
+    int page = 1,
+    int perPage = 20,
+    String? sortBy,
+  }) async {
+    try {
+      final Map<String, dynamic> queryParams = {
+        'page': page,
+        'per_page': perPage,
+      };
+      
+      // Map sort values to API format
+      if (sortBy != null && sortBy.isNotEmpty) {
+        // Accept both 'price:asc' and 'price_asc' formats
+        if (sortBy == 'price:asc' || sortBy == 'price_asc') {
+          queryParams['sort'] = 'price_asc';
+        } else if (sortBy == 'price:desc' || sortBy == 'price_desc') {
+          queryParams['sort'] = 'price_desc';
+        } else if (sortBy == 'sales:desc' || sortBy == 'sales_desc') {
+          queryParams['sort'] = 'sales_desc';
+        } else {
+          queryParams['sort'] = 'sales_desc'; // Default for hot sellings
+        }
+      }
+      
+      debugPrint('🔥 Hot sellings request: page=$page, sortBy=$sortBy, mapped sort=${queryParams['sort']}');
+      
+      final response = await _api.get(
+        ApiConstants.getHotSellings,
+        queryParams: queryParams,
+      );
+
+      if (response.success && response.data != null) {
+        final productsData = response.data!['products'];
+        final pagination = response.data!['pagination'];
+        
+        if (productsData != null && productsData is List) {
+          final products = await compute(_parseProducts, productsData);
+          debugPrint('🔥 Hot sellings parsed ${products.length} products');
+          return {
+            'products': products,
+            'has_next': pagination != null ? pagination['has_next'] ?? false : false,
+            'pagination': pagination,
+          };
+        }
+      } else {
+        debugPrint('❌ Hot sellings failed: ${response.message}');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Hot sellings error: $e');
+      debugPrint('📍 Stack trace: $stackTrace');
+    }
+    return {'products': <Product>[], 'has_next': false};
+  }
+
+  /// Get one dollar products (Paginated with sorting)
+  /// Products with price > $0 and <= $1
+  /// Supports sort: 'price_asc' (default), 'price_desc', 'sales_desc'
+  Future<Map<String, dynamic>> getOneDollarProductsPaginated({
+    int page = 1,
+    int perPage = 20,
+    String? sortBy,
+    double minPrice = 0.01,
+    double maxPrice = 1.0,
+  }) async {
+    try {
+      final Map<String, dynamic> queryParams = {
+        'page': page,
+        'per_page': perPage,
+        'min_price': minPrice,
+        'max_price': maxPrice,
+      };
+      
+      // Map sort values to API format
+      if (sortBy != null && sortBy.isNotEmpty) {
+        // Accept both 'price:asc' and 'price_asc' formats
+        if (sortBy == 'price:asc' || sortBy == 'price_asc') {
+          queryParams['sort'] = 'price_asc';
+        } else if (sortBy == 'price:desc' || sortBy == 'price_desc') {
+          queryParams['sort'] = 'price_desc';
+        } else if (sortBy == 'sales:desc' || sortBy == 'sales_desc') {
+          queryParams['sort'] = 'sales_desc';
+        } else {
+          queryParams['sort'] = 'price_asc'; // Default for dollar deals
+        }
+      }
+      
+      debugPrint('� One dollar request: page=$page, sortBy=$sortBy, mapped sort=${queryParams['sort']}');
+      
+      final response = await _api.get(
+        ApiConstants.getOneDollarProducts,
+        queryParams: queryParams,
+      );
+
+      if (response.success && response.data != null) {
+        final productsData = response.data!['products'];
+        final pagination = response.data!['pagination'];
+        
+        if (productsData != null && productsData is List) {
+          final products = await compute(_parseProducts, productsData);
+          debugPrint('� One dollar parsed ${products.length} products');
+          return {
+            'products': products,
+            'has_next': pagination != null ? pagination['has_next'] ?? false : false,
+            'pagination': pagination,
+          };
+        }
+      } else {
+        debugPrint('❌ One dollar failed: ${response.message}');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ One dollar error: $e');
+      debugPrint('📍 Stack trace: $stackTrace');
+    }
+    return {'products': <Product>[], 'has_next': false};
   }
 
   /// Search products (Paginated)
   Future<Map<String, dynamic>> searchProductsPaginated(
     String query, {
     int page = 1,
-    int perPage = 20,
+    int perPage = 30,
     String? sortBy,
     double? minPrice,
     double? maxPrice,
@@ -481,6 +678,7 @@ class HomeService extends ChangeNotifier {
           return {
             'products': products,
             'has_next': pagination != null ? pagination['has_next'] ?? false : false,
+            'pagination': pagination, // Include full pagination for total count
           };
         }
       } else {
@@ -500,16 +698,18 @@ class HomeService extends ChangeNotifier {
   }
 
   /// Search products by image (Paginated)
+  /// Can use either imagePath (file upload) or imageUrl (converted URL for pagination)
   Future<Map<String, dynamic>> searchByImagePaginated(
     String imagePath, {
     int page = 1,
-    int perPage = 20,
+    int perPage = 30,
     String? sortBy,
     double? minPrice,
     double? maxPrice,
+    String? imageUrl, // Use this for pagination instead of re-uploading file
   }) async {
     try {
-      debugPrint('🔍 searchByImagePaginated called with: $imagePath');
+      debugPrint('🔍 searchByImagePaginated called with: $imagePath, imageUrl: $imageUrl, page: $page');
       
       final Map<String, dynamic> queryParams = {
         'page': page,
@@ -527,12 +727,29 @@ class HomeService extends ChangeNotifier {
         queryParams['max_price'] = maxPrice;
       }
       
-      final response = await _api.postMultipart(
-        ApiConstants.searchByImage,
-        filePath: imagePath,
-        fileField: 'file',
-        queryParams: queryParams,
-      );
+      ApiResponse response;
+      
+      // Check if imagePath is a URL (network image) or a local file path
+      final isNetworkUrl = imagePath.startsWith('http://') || imagePath.startsWith('https://');
+      
+      // If we have a converted URL (from previous response), use POST with image_url
+      // Also use this path if the imagePath is already a network URL
+      if ((imageUrl != null && imageUrl.isNotEmpty) || isNetworkUrl) {
+        debugPrint('⚡ Using URL for image search: ${imageUrl ?? imagePath}');
+        queryParams['image_url'] = imageUrl ?? imagePath;
+        response = await _api.post(
+          ApiConstants.searchByImage,
+          body: queryParams,
+        );
+      } else {
+        // Local file - upload it via multipart
+        response = await _api.postMultipart(
+          ApiConstants.searchByImage,
+          filePath: imagePath,
+          fileField: 'file',
+          queryParams: queryParams,
+        );
+      }
 
       debugPrint('📡 API Response success: ${response.success}');
       debugPrint('📡 API Response message: ${response.message}');
@@ -541,6 +758,13 @@ class HomeService extends ChangeNotifier {
       if (response.success && response.data != null) {
         final productsData = response.data!['products'] ?? response.data!['data'];
         final pagination = response.data!['pagination'];
+        final meta = response.data!['meta'];
+        
+        // Extract converted URL for faster pagination
+        final convertedUrl = meta?['converted_url'];
+        if (convertedUrl != null) {
+          debugPrint('🔗 Got converted URL for pagination: ${convertedUrl.toString().substring(0, 50)}...');
+        }
         
         debugPrint('📦 Products data type: ${productsData.runtimeType}');
         debugPrint('📦 Products count: ${productsData is List ? productsData.length : 'not a list'}');
@@ -550,6 +774,8 @@ class HomeService extends ChangeNotifier {
           return {
             'products': products,
             'has_next': pagination != null ? pagination['has_next'] ?? false : false,
+            'pagination': pagination,
+            'converted_url': convertedUrl, // Return this for pagination
           };
         }
       } else {
@@ -582,7 +808,7 @@ class HomeService extends ChangeNotifier {
       final Map<String, dynamic> queryParams = {
         'id': categoryId,
         'page': page,
-        'per_page': 10,
+        'per_page': 30, // Smart fetch: 30 products per page like home screen
       };
 
       if (search != null && search.isNotEmpty) queryParams['search'] = search;

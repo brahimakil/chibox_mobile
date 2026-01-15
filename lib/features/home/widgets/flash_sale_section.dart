@@ -62,19 +62,22 @@ class FlashSaleSection extends StatelessWidget {
         children: [
           // Header
           Padding(
-            padding: const EdgeInsets.all(AppSpacing.base),
+            padding: const EdgeInsets.all(AppSpacing.sm),
             child: Row(
               children: [
                 // Title & Icon
-                Icon(Iconsax.flash_15, color: accentColor, size: 24)
+                Icon(Iconsax.flash_15, color: accentColor, size: 18)
                     .animate(onPlay: (c) => c.repeat())
                     .shimmer(duration: 1500.ms, color: Colors.white),
-                AppSpacing.horizontalSm,
+                AppSpacing.horizontalXs,
                 Text(
                   flashSale.title,
-                  style: AppTypography.headingSmall(
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    fontStyle: FontStyle.italic,
                     color: accentColor,
-                  ).copyWith(fontWeight: FontWeight.w800, fontStyle: FontStyle.italic),
+                  ),
                 ),
                 
                 const Spacer(),
@@ -114,16 +117,16 @@ class FlashSaleSection extends StatelessWidget {
 
   Widget _buildStandardLayout(BuildContext context) {
     return SizedBox(
-      height: 280, // Compact height for cards
+      height: 240, // Compact height for cards
       child: ListView.separated(
-        padding: const EdgeInsets.only(left: AppSpacing.base, right: AppSpacing.base, bottom: 8),
+        padding: const EdgeInsets.only(left: AppSpacing.sm, right: AppSpacing.sm, bottom: 6),
         scrollDirection: Axis.horizontal,
         itemCount: flashSale.products.length,
-        separatorBuilder: (context, index) => AppSpacing.horizontalMd,
+        separatorBuilder: (context, index) => AppSpacing.horizontalSm,
         itemBuilder: (context, index) {
           final product = flashSale.products[index];
           return SizedBox(
-            width: 160,
+            width: 140,
             child: ProductCard.fromProduct(
               product,
               onTap: () {
@@ -144,7 +147,7 @@ class FlashSaleSection extends StatelessWidget {
   Widget _buildSwiperLayout(BuildContext context) {
     // A more prominent, larger card layout for "swiper" type
     return SizedBox(
-      height: 320,
+      height: 280,
       child: PageView.builder(
         controller: PageController(viewportFraction: 0.85),
         padEnds: false,
@@ -152,7 +155,7 @@ class FlashSaleSection extends StatelessWidget {
         itemBuilder: (context, index) {
           final product = flashSale.products[index];
           return Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.md),
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
             child: ProductCard.fromProduct(
               product,
               onTap: () {
@@ -230,17 +233,17 @@ class _FlashSaleTimerState extends State<_FlashSaleTimer> {
 
   Widget _buildTimeBox(String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       decoration: BoxDecoration(
         color: widget.color,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(3),
       ),
       child: Text(
         value,
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.bold,
-          fontSize: 12,
+          fontSize: 10,
         ),
       ),
     );

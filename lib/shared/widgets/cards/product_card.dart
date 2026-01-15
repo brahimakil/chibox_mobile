@@ -298,7 +298,7 @@ class _ProductCardState extends State<ProductCard> {
 
                 // Info Section
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                  padding: const EdgeInsets.fromLTRB(6, 4, 6, 5),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -307,32 +307,32 @@ class _ProductCardState extends State<ProductCard> {
                       Text(
                         widget.name,
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: isDark ? DarkThemeColors.text : LightThemeColors.text,
-                          height: 1.3,
+                          height: 1.2,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
 
                       // Price Section
                       Text(
                         '${widget.currencySymbol}${widget.price.toStringAsFixed(2)}',
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: AppColors.primary500,
                           height: 1,
                         ),
                       ),
                       if (widget.originalPrice != null && widget.originalPrice! > widget.price) ...[
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 1),
                         Text(
                           '${widget.currencySymbol}${widget.originalPrice!.toStringAsFixed(2)}',
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 9,
                             decoration: TextDecoration.lineThrough,
                             color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
                           ),
@@ -368,7 +368,7 @@ class _FavoriteButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(AppSpacing.sm),
+        padding: const EdgeInsets.all(5),
         decoration: BoxDecoration(
           color: (isDark ? DarkThemeColors.surface : LightThemeColors.surface).withOpacity(0.9),
           shape: BoxShape.circle,
@@ -379,7 +379,7 @@ class _FavoriteButton extends StatelessWidget {
           child: Icon(
             isLiked ? Iconsax.heart5 : Iconsax.heart,
             key: ValueKey(isLiked),
-            size: 20,
+            size: 16,
             color: isLiked ? AppColors.error : (isDark ? AppColors.neutral400 : AppColors.neutral500),
           ),
         ),

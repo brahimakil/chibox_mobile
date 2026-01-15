@@ -122,19 +122,22 @@ class _FlyingWidgetState extends State<_FlyingWidget> with SingleTickerProviderS
 
   @override
   Widget build(BuildContext context) {
+    // Use a smaller fixed size for the flying animation (60x60)
+    const double animationSize = 60.0;
+    
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
         return Positioned(
-          left: _xAnimation.value,
-          top: _yAnimation.value,
+          left: _xAnimation.value + (widget.startSize.width - animationSize) / 2,
+          top: _yAnimation.value + (widget.startSize.height - animationSize) / 2,
           child: Opacity(
             opacity: _opacityAnimation.value,
             child: Transform.scale(
               scale: _scaleAnimation.value,
               child: Container(
-                width: widget.startSize.width,
-                height: widget.startSize.height,
+                width: animationSize,
+                height: animationSize,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   image: DecorationImage(

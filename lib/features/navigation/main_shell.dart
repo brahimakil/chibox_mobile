@@ -35,7 +35,20 @@ class _MainShellState extends State<MainShell> {
 
   /// Handle back button press
   Future<bool> _handleBackPress() async {
+    // First, check if the current navigator can pop (e.g., CategoryProductsScreen pushed on top)
+    // This handles routes pushed from within tabs
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return false; // Don't exit app
+    }
+    
     final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+    
+    // If on home tab and a category is selected, clear it first
+    if (navigationProvider.currentIndex == 0 && navigationProvider.hasHomeCategorySelected) {
+      navigationProvider.clearHomeCategorySelection();
+      return false; // Don't exit app
+    }
     
     // If we can go back in tab history, do that
     if (navigationProvider.canGoBack) {
@@ -74,7 +87,7 @@ class _MainShellState extends State<MainShell> {
     _NavItem(icon: Iconsax.home, activeIcon: Iconsax.home_15, label: 'Home'),
     _NavItem(icon: Iconsax.category, activeIcon: Iconsax.category5, label: 'Categories'),
     _NavItem(icon: Iconsax.heart, activeIcon: Iconsax.heart5, label: 'Wishlist'),
-    _NavItem(icon: Iconsax.bag_2, activeIcon: Iconsax.bag_25, label: 'Bag'),
+    _NavItem(icon: Iconsax.shopping_cart, activeIcon: Iconsax.shopping_cart5, label: 'Cart'),
     _NavItem(icon: Iconsax.user, activeIcon: Iconsax.user, label: 'Profile'),
   ];
 
@@ -95,6 +108,10 @@ class _MainShellState extends State<MainShell> {
     // Force rebuild of screens when auth state changes
     // This ensures that screens like Wishlist update their state (Guest vs User)
     // when the user logs in or out.
+    // 
+    // canPop is false so PopScope intercepts all back gestures.
+    // _handleBackPress then checks if Navigator can pop (for screens pushed from tabs)
+    // before handling tab navigation or exit logic.
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) async {
@@ -127,8 +144,8 @@ class _MainShellState extends State<MainShell> {
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.base,
-              vertical: AppSpacing.sm,
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.xs,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -136,7 +153,7 @@ class _MainShellState extends State<MainShell> {
                 final item = _navItems[index];
                 final isSelected = currentIndex == index;
                 
-                // Get badge count for Bag
+                // Get badge count for Cart
                 int? badgeCount;
                 if (index == 3) {
                   badgeCount = Provider.of<CartService>(context).itemCount;
@@ -209,15 +226,15 @@ class _NavBarItem extends StatelessWidget {
           children: [
             SizedBox(
               key: iconKey,
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               child: Center(
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
                     Icon(
                       icon,
-                      size: 24,
+                      size: 22,
                       color: isSelected ? activeColor : inactiveColor,
                     ),
                     if (badgeCount != null && badgeCount! > 0)
@@ -249,11 +266,11 @@ class _NavBarItem extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 color: isSelected ? activeColor : inactiveColor,
                 letterSpacing: 0.2,

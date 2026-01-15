@@ -10,9 +10,12 @@ class CacheService {
   static const String _categoriesTimestampKey = 'cached_categories_timestamp';
   static const String _categoryProductsPrefix = 'cached_category_products_';
   static const String _categoryProductsTimestampPrefix = 'cached_category_products_timestamp_';
+  static const String _subcategoriesPrefix = 'cached_subcategories_';
+  static const String _subcategoriesTimestampPrefix = 'cached_subcategories_timestamp_';
   
-  static const Duration cacheDuration = Duration(minutes: 5);
+  static const Duration cacheDuration = Duration(minutes: 15); // Extended for stale-while-revalidate
   static const Duration categoryProductsCacheDuration = Duration(minutes: 10); // Longer cache for category products
+  static const Duration subcategoriesCacheDuration = Duration(minutes: 30); // Even longer for subcategories (rarely change)
 
   /// Save home data to cache
   static Future<void> cacheHomeData(Map<String, dynamic> data) async {
@@ -155,6 +158,78 @@ class CacheService {
     }
   }
 
+  // ============== SUBCATEGORIES CACHING ==============
+  
+  /// Cache subcategories for a specific parent category
+  static Future<void> cacheSubcategories(int categoryId, List<Map<String, dynamic>> subcategories, Map<String, dynamic> pagination) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = '$_subcategoriesPrefix$categoryId';
+      final timestampKey = '$_subcategoriesTimestampPrefix$categoryId';
+      
+      final data = {
+        'subcategories': subcategories,
+        'pagination': pagination,
+      };
+      final jsonString = jsonEncode(data);
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      
+      await prefs.setString(key, jsonString);
+      await prefs.setInt(timestampKey, timestamp);
+      
+      debugPrint('✅ Subcategories for $categoryId cached: ${subcategories.length} items');
+    } catch (e) {
+      debugPrint('❌ Error caching subcategories: $e');
+    }
+  }
+
+  /// Get cached subcategories for a parent category if valid
+  static Future<Map<String, dynamic>?> getCachedSubcategories(int categoryId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = '$_subcategoriesPrefix$categoryId';
+      final timestampKey = '$_subcategoriesTimestampPrefix$categoryId';
+      
+      final jsonString = prefs.getString(key);
+      final timestamp = prefs.getInt(timestampKey);
+
+      if (jsonString == null || timestamp == null) {
+        return null;
+      }
+
+      final cachedTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+      final now = DateTime.now();
+      final age = now.difference(cachedTime);
+
+      if (age > subcategoriesCacheDuration) {
+        debugPrint('⚠️ Subcategories for $categoryId cache expired');
+        return null;
+      }
+
+      debugPrint('✅ Using cached subcategories for $categoryId (age: ${age.inMinutes}m)');
+      return jsonDecode(jsonString) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('❌ Error reading cached subcategories: $e');
+      return null;
+    }
+  }
+
+  /// Append more subcategories to existing cache (for pagination)
+  static Future<void> appendSubcategoriesToCache(int categoryId, List<Map<String, dynamic>> newSubcategories, Map<String, dynamic> pagination) async {
+    try {
+      final existing = await getCachedSubcategories(categoryId);
+      if (existing != null) {
+        final existingList = (existing['subcategories'] as List).cast<Map<String, dynamic>>();
+        existingList.addAll(newSubcategories);
+        await cacheSubcategories(categoryId, existingList, pagination);
+      } else {
+        await cacheSubcategories(categoryId, newSubcategories, pagination);
+      }
+    } catch (e) {
+      debugPrint('❌ Error appending subcategories to cache: $e');
+    }
+  }
+
   /// Clear all cached data
   static Future<void> clearCache() async {
     try {
@@ -164,9 +239,38 @@ class CacheService {
       await prefs.remove(_categoriesKey);
       await prefs.remove(_categoriesTimestampKey);
       
+      // Clear all category products and subcategories cache
+      final keys = prefs.getKeys();
+      for (final key in keys) {
+        if (key.startsWith(_categoryProductsPrefix) || 
+            key.startsWith(_categoryProductsTimestampPrefix) ||
+            key.startsWith(_subcategoriesPrefix) ||
+            key.startsWith(_subcategoriesTimestampPrefix)) {
+          await prefs.remove(key);
+        }
+      }
+      
       debugPrint('🗑️ Cache cleared');
     } catch (e) {
       debugPrint('❌ Error clearing cache: $e');
+    }
+  }
+
+  /// Clear all category products cache
+  static Future<void> clearCategoryProductsCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys();
+      int count = 0;
+      for (final key in keys) {
+        if (key.startsWith(_categoryProductsPrefix) || key.startsWith(_categoryProductsTimestampPrefix)) {
+          await prefs.remove(key);
+          count++;
+        }
+      }
+      debugPrint('🗑️ Cleared $count category product cache entries');
+    } catch (e) {
+      debugPrint('❌ Error clearing category products cache: $e');
     }
   }
 

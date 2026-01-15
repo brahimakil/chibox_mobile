@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
 import 'core/theme/theme.dart';
+import 'core/constants/api_constants.dart';
 import 'core/services/api_service.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/home_service.dart';
@@ -14,9 +18,12 @@ import 'core/services/navigation_provider.dart';
 import 'core/services/security_service.dart';
 import 'core/services/order_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/payment_service.dart';
+import 'core/services/fcm_service.dart';
 import 'features/navigation/main_shell.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/splash/screens/splash_screen.dart';
+import 'features/orders/screens/order_details_screen.dart';
 import 'shared/widgets/app_lock_wrapper.dart';
 
 void main() async {
@@ -28,10 +35,24 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  
+  // Set up background message handler
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
   // Initialize services
+  debugPrint('🔴🔴🔴 STARTUP DEBUG: Checking API Configuration 🔴🔴🔴');
+  debugPrint('🔴 API Base URL: ${ApiConstants.baseUrl}');
+  
   await ApiService().init();
   await AuthService().init();
   await SecurityService().init();
+  
+  // Initialize FCM
+  await FcmService().initialize();
 
   runApp(const LuxeMarketApp());
 }
@@ -61,12 +82,14 @@ class LuxeMarketApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SecurityService()),
         ChangeNotifierProvider(create: (_) => OrderService()),
         ChangeNotifierProvider(create: (_) => NotificationService()),
+        ChangeNotifierProvider(create: (_) => PaymentService()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {
           return MaterialApp(
             title: 'LuxeMarket',
             debugShowCheckedModeBanner: false,
+            navigatorKey: navigatorKey,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: themeProvider.currentThemeMode,
@@ -74,6 +97,18 @@ class LuxeMarketApp extends StatelessWidget {
             routes: {
               '/login': (_) => const LoginScreen(),
               '/home': (_) => const MainShell(),
+            },
+            onGenerateRoute: (settings) {
+              // Handle order details navigation from notifications
+              if (settings.name == '/order-details') {
+                final orderId = settings.arguments as int?;
+                if (orderId != null) {
+                  return MaterialPageRoute(
+                    builder: (_) => OrderDetailsScreen(orderId: orderId),
+                  );
+                }
+              }
+              return null;
             },
           );
         },

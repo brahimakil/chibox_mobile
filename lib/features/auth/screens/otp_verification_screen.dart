@@ -7,6 +7,7 @@ import '../../../core/theme/theme.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../shared/widgets/widgets.dart';
+import 'complete_profile_screen.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   final int userId;
@@ -78,8 +79,16 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
     if (mounted) {
       if (response.success) {
-        // Navigate to main app
-        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+        if (widget.isNewUser) {
+          // New user - go to complete profile screen
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const CompleteProfileScreen()),
+            (route) => false,
+          );
+        } else {
+          // Existing user - go to main app
+          Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+        }
       } else {
         _showError(response.message);
       }
@@ -289,4 +298,5 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     );
   }
 }
+
 

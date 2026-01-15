@@ -23,8 +23,8 @@ class ProductSectionWidget extends StatelessWidget {
     final isGrid = type == 'grid' || type == '1';
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      padding: const EdgeInsets.only(top: 10),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.only(top: 6),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -43,14 +43,14 @@ class ProductSectionWidget extends StatelessWidget {
         children: [
           // Section Header
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 section.title,
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: isDark ? Colors.white : Colors.black,
                 ),
@@ -69,15 +69,15 @@ class ProductSectionWidget extends StatelessWidget {
                     Text(
                       'See All',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                         color: AppColors.primary500,
                       ),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 3),
                     Icon(
                       Iconsax.arrow_right_3,
-                      size: 16,
+                      size: 14,
                       color: AppColors.primary500,
                     ),
                   ],
@@ -86,7 +86,7 @@ class ProductSectionWidget extends StatelessWidget {
             ],
           ),
         ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           if (isGrid)
             _buildGridLayout(context)
           else
@@ -124,11 +124,11 @@ class ProductSectionWidget extends StatelessWidget {
 
   Widget _buildHorizontalScrollLayout(BuildContext context) {
     return SizedBox(
-      height: 250,
+      height: 246,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+        padding: const EdgeInsets.only(left: 10, right: 10, bottom: 4),
         itemCount: section.products.length,
         itemExtent: 162, // 150 width + 12 margin for performance
         addAutomaticKeepAlives: false,

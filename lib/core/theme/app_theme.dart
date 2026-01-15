@@ -14,6 +14,17 @@ class AppTheme {
     brightness: Brightness.light,
     fontFamily: AppTypography.fontFamily,
     
+    // Page Transitions - Enable iOS-style swipe back on all platforms
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+      },
+    ),
+    
     // Color Scheme
     colorScheme: const ColorScheme.light(
       primary: AppColors.primary500,
@@ -195,6 +206,17 @@ class AppTheme {
     useMaterial3: true,
     brightness: Brightness.dark,
     fontFamily: AppTypography.fontFamily,
+    
+    // Page Transitions - Enable iOS-style swipe back on all platforms
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+      },
+    ),
     
     // Color Scheme
     colorScheme: const ColorScheme.dark(

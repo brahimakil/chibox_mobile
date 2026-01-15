@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_constants.dart';
 import '../constants/app_constants.dart';
 import 'api_service.dart';
+import 'fcm_service.dart';
 import '../models/user_model.dart';
 
 /// Authentication Service
@@ -136,7 +137,69 @@ class AuthService extends ChangeNotifier {
       }
 
       _error = response.message;
-      return ApiResponse.error(response.message);
+      return ApiResponse.error(response.message, statusCode: response.statusCode);
+    } catch (e) {
+      _setLoading(false);
+      _error = e.toString();
+      return ApiResponse.error(_error!);
+    }
+  }
+
+  /// Login or Register - Auto-registers if user not found
+  Future<ApiResponse<Map<String, dynamic>>> loginOrRegister({
+    required String countryCode,
+    required String phoneNumber,
+    String? deviceId,
+    String? deviceType,
+  }) async {
+    _setLoading(true);
+    _error = null;
+
+    try {
+      // First try to login
+      final loginResponse = await _api.post(ApiConstants.login, body: {
+        'country_code': countryCode.replaceAll('+', ''),
+        'phone_number': phoneNumber,
+        if (deviceId != null) 'device_id': deviceId,
+        if (deviceType != null) 'device_type': deviceType,
+      });
+
+      if (loginResponse.success && loginResponse.data != null) {
+        final userId = loginResponse.data!['user_id'] as int;
+        _setLoading(false);
+        return ApiResponse.success({
+          'user_id': userId,
+          'is_new_user': false,
+        }, message: loginResponse.message);
+      }
+
+      // If user not found (404), auto-register them
+      if (loginResponse.statusCode == 404) {
+        final registerResponse = await _api.post(ApiConstants.register, body: {
+          'country_code': countryCode.replaceAll('+', ''),
+          'phone_number': phoneNumber,
+          'first_name': 'User', // Placeholder, will be updated later
+          if (deviceId != null) 'device_id': deviceId,
+          if (deviceType != null) 'device_type': deviceType,
+        });
+
+        _setLoading(false);
+
+        if (registerResponse.success && registerResponse.data != null) {
+          final userId = registerResponse.data!['user_id'] as int;
+          return ApiResponse.success({
+            'user_id': userId,
+            'is_new_user': true,
+          }, message: registerResponse.message);
+        }
+
+        _error = registerResponse.message;
+        return ApiResponse.error(registerResponse.message);
+      }
+
+      _setLoading(false);
+      _error = loginResponse.message;
+      return ApiResponse.error(loginResponse.message);
     } catch (e) {
       _setLoading(false);
       _error = e.toString();
@@ -154,10 +217,13 @@ class AuthService extends ChangeNotifier {
     _error = null;
 
     try {
+      // Auto-get FCM token if not provided
+      final token = fcmToken ?? await FcmService().getToken();
+      
       final response = await _api.post(ApiConstants.verifyOtp, body: {
         'user_id': userId,
         'otp': otp,
-        if (fcmToken != null) 'fcm_token': fcmToken,
+        if (token != null) 'fcm_token': token,
       });
 
       _setLoading(false);
@@ -226,17 +292,36 @@ class AuthService extends ChangeNotifier {
     String? lastName,
     String? email,
     String? gender,
+    String? profileImagePath,
   }) async {
     _setLoading(true);
     _error = null;
 
     try {
-      final response = await _api.post(ApiConstants.editProfile, body: {
-        if (firstName != null) 'first_name': firstName,
-        if (lastName != null) 'last_name': lastName,
-        if (email != null) 'email': email,
-        if (gender != null) 'gender': gender,
-      });
+      ApiResponse response;
+      
+      if (profileImagePath != null) {
+        // Use multipart request for profile image upload
+        response = await _api.postMultipart(
+          ApiConstants.editProfile,
+          filePath: profileImagePath,
+          fileField: 'profile_image',
+          fields: {
+            if (firstName != null) 'first_name': firstName,
+            if (lastName != null) 'last_name': lastName,
+            if (email != null) 'email': email,
+            if (gender != null) 'gender': gender,
+          },
+        );
+      } else {
+        // Regular POST request without file
+        response = await _api.post(ApiConstants.editProfile, body: {
+          if (firstName != null) 'first_name': firstName,
+          if (lastName != null) 'last_name': lastName,
+          if (email != null) 'email': email,
+          if (gender != null) 'gender': gender,
+        });
+      }
 
       _setLoading(false);
 

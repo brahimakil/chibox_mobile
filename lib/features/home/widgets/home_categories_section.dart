@@ -81,47 +81,27 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
       showingSubcategories = false;
     }
 
-    // Add "All" as the last item only when showing main categories
-    final itemCount = showingSubcategories ? displayItems.length : displayItems.length + 1;
+    // No "All" button - just show categories with skeleton loading at the end when paginating
+    final itemCount = displayItems.length;
     
     // If showing subcategories, use vertical scrollable list
     if (showingSubcategories) {
       return _buildVerticalSubcategoriesList(context, displayItems, isDark);
     }
     
-    // Dynamic row distribution for better visual balance
-    // For small counts, prefer more items on top row
-    int topRowCount;
-    int bottomRowCount;
-    
-    if (itemCount <= 1) {
-      topRowCount = itemCount;
-      bottomRowCount = 0;
-    } else if (itemCount <= 3) {
-      // 2 items: 2 top, 0 bottom | 3 items: 2 top, 1 bottom
-      topRowCount = 2;
-      bottomRowCount = itemCount - 2;
-    } else if (itemCount <= 6) {
-      // 4: 3-1, 5: 3-2, 6: 4-2
-      topRowCount = (itemCount * 0.6).ceil();
-      bottomRowCount = itemCount - topRowCount;
-    } else if (itemCount <= 10) {
-      // 7: 4-3, 8: 5-3, 9: 5-4, 10: 6-4
-      topRowCount = (itemCount * 0.55).ceil();
-      bottomRowCount = itemCount - topRowCount;
-    } else {
-      // 11+: balanced distribution (roughly equal)
-      topRowCount = (itemCount / 2).ceil();
-      bottomRowCount = itemCount - topRowCount;
-    }
-    
-    // Add extra columns for loading indicator
-    final extraColumns = categoryService.hasMore ? 1 : 0;
+    // Balanced row distribution: 1 above, 1 below (equal columns)
+    // This creates pairs: first half on top, second half on bottom
+    // 10 items = 5 columns (5 on top, 5 on bottom)
+    // 8 items = 4 columns (4 on top, 4 on bottom)
+    // 9 items = 5 columns (5 on top, 4 on bottom - last column has no bottom)
+    final int columnCount = (itemCount / 2).ceil();
+    final int topRowCount = columnCount;
+    final int bottomRowCount = itemCount - columnCount;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         // 2-row horizontal scrollable grid with SHEIN-style card container
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -141,12 +121,12 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: SizedBox(
-              height: 220, // Height for 2 rows (2 items x 95 + 16 padding + buffer)
+              height: 190, // Height for 2 rows (reduced)
               child: SingleChildScrollView(
                 controller: _scrollController,
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -167,8 +147,8 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
                         ],
                       );
                     }),
-                    // Loading indicator at end
-                    if (extraColumns > 0 && categoryService.isLoading)
+                    // Skeleton loading at end when more categories available
+                    if (categoryService.hasMore)
                       _buildLoadingColumn(isDark),
                   ],
                 ),
@@ -181,12 +161,30 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
     );
   }
 
-  /// Builds a vertical scrollable list of subcategories
+  /// Builds a grid of subcategories (same style as main categories)
   Widget _buildVerticalSubcategoriesList(BuildContext context, List<ProductCategory> subcategories, bool isDark) {
+    // Add 1 for "View All" button at the end
+    final itemCount = subcategories.length + 1;
+    
+    // Get screen width to determine if we need scrolling
+    final screenWidth = MediaQuery.of(context).size.width - 32; // Subtract margins
+    final itemWidth = 64.0; // Width per item
+    final maxItemsPerRow = (screenWidth / itemWidth).floor();
+    
+    // Determine layout based on item count
+    final bool needsScrolling = itemCount > maxItemsPerRow * 2; // More than 2 rows worth
+    final bool usesTwoRows = itemCount > maxItemsPerRow;
+    
+    // For scrolling layout
+    final int columnCount = (itemCount / 2).ceil();
+    final int topRowCount = columnCount;
+    final int bottomRowCount = itemCount - columnCount;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 16),
+        const SizedBox(height: 4),
+        // Full-width container
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
@@ -204,86 +202,122 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // View All header - goes to subcategories page
-                InkWell(
-                  onTap: () {
-                    // Navigate to Categories tab with this category pre-selected
-                    Provider.of<NavigationProvider>(context, listen: false)
-                        .goToCategoriesWithSelection(widget.selectedCategory!.id);
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Subcategories',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            Text(
-                              'View All',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: AppColors.primary500,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              Iconsax.arrow_right_3,
-                              size: 16,
-                              color: AppColors.primary500,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Divider(
-                  height: 1,
-                  color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-                ),
-                // Subcategories list
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 260),
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: subcategories.map((subcategory) {
-                        return _SubcategoryListItem(
-                          category: subcategory,
-                          isDark: isDark,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => CategoryProductsScreen(category: subcategory),
-                              ),
+            child: needsScrolling
+                // Many items: use horizontal scrolling
+                ? SizedBox(
+                    height: 190,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ...List.generate(topRowCount, (topIndex) {
+                            final bottomIndex = topIndex < bottomRowCount ? topRowCount + topIndex : -1;
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildSubcategoryGridItem(context, topIndex, isDark, subcategories, expanded: false),
+                                if (bottomIndex >= 0 && bottomIndex < itemCount)
+                                  _buildSubcategoryGridItem(context, bottomIndex, isDark, subcategories, expanded: false),
+                              ],
                             );
-                          },
-                        );
-                      }).toList(),
+                          }),
+                        ],
+                      ),
                     ),
+                  )
+                // Few items: expand to fill width
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                    child: usesTwoRows
+                        ? _buildTwoRowGrid(context, subcategories, isDark, (itemCount / 2).ceil(), itemCount - (itemCount / 2).ceil(), itemCount)
+                        : _buildSingleRowGrid(context, subcategories, isDark, itemCount),
                   ),
-                ),
-              ],
-            ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 4),
       ],
+    );
+  }
+  
+  /// Single row grid - items expand to fill width evenly
+  Widget _buildSingleRowGrid(BuildContext context, List<ProductCategory> subcategories, bool isDark, int itemCount) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: List.generate(itemCount, (index) {
+        return Expanded(
+          child: _buildSubcategoryGridItem(context, index, isDark, subcategories, expanded: true),
+        );
+      }),
+    );
+  }
+  
+  /// Two row grid - items expand to fill width evenly
+  Widget _buildTwoRowGrid(BuildContext context, List<ProductCategory> subcategories, bool isDark, int topRowCount, int bottomRowCount, int itemCount) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Top row
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: List.generate(topRowCount, (index) {
+            return Expanded(
+              child: _buildSubcategoryGridItem(context, index, isDark, subcategories, expanded: true),
+            );
+          }),
+        ),
+        // Bottom row
+        if (bottomRowCount > 0)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ...List.generate(bottomRowCount, (index) {
+                final actualIndex = topRowCount + index;
+                return Expanded(
+                  child: _buildSubcategoryGridItem(context, actualIndex, isDark, subcategories, expanded: true),
+                );
+              }),
+              // Add empty spacers to match top row column count
+              ...List.generate(topRowCount - bottomRowCount, (_) => const Expanded(child: SizedBox())),
+            ],
+          ),
+      ],
+    );
+  }
+  
+  /// Build a single subcategory grid item
+  Widget _buildSubcategoryGridItem(BuildContext context, int index, bool isDark, List<ProductCategory> subcategories, {bool expanded = false}) {
+    // Last item is "View All" button
+    if (index == subcategories.length) {
+      return _ViewAllSubcategoriesButton(
+        isDark: isDark,
+        expanded: expanded,
+        onTap: () {
+          // Navigate to Categories tab with this category pre-selected
+          Provider.of<NavigationProvider>(context, listen: false)
+              .goToCategoriesWithSelection(widget.selectedCategory!.id);
+        },
+      );
+    }
+
+    final category = subcategories[index];
+    return _CategoryItem(
+      category: category,
+      isDark: isDark,
+      isSubcategory: true,
+      expanded: expanded,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CategoryProductsScreen(
+              category: category,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -327,11 +361,11 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: SizedBox(
-              height: 220,
+              height: 190,
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: List.generate(5, (colIndex) {
@@ -358,26 +392,26 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
       baseColor: baseColor,
       highlightColor: highlightColor,
       child: Container(
-        width: 76,
-        height: 95,
-        margin: const EdgeInsets.only(right: 8, bottom: 6),
+        width: 64,
+        height: 80,
+        margin: const EdgeInsets.only(right: 6, bottom: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Circle skeleton
             Container(
-              width: 54,
-              height: 54,
+              width: 46,
+              height: 46,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: baseColor,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             // Text skeleton
             Container(
-              width: 50,
-              height: 10,
+              width: 42,
+              height: 8,
               decoration: BoxDecoration(
                 color: baseColor,
                 borderRadius: BorderRadius.circular(4),
@@ -390,14 +424,9 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
   }
 
   Widget _buildCategoryItem(BuildContext context, int index, bool isDark, List<ProductCategory> displayItems, bool showingSubcategories) {
-    // Last item is "All Categories" button (only when showing main categories)
-    if (!showingSubcategories && index == displayItems.length) {
-      return _AllCategoriesButton(
-        isDark: isDark,
-        onTap: () {
-          Provider.of<NavigationProvider>(context, listen: false).setIndex(1);
-        },
-      );
+    // Safety check for index bounds
+    if (index >= displayItems.length) {
+      return const SizedBox.shrink();
     }
 
     final category = displayItems[index];
@@ -409,7 +438,9 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => CategoryProductsScreen(category: category),
+            builder: (context) => CategoryProductsScreen(
+              category: category,
+            ),
           ),
         );
       },
@@ -421,76 +452,84 @@ class _CategoryItem extends StatelessWidget {
   final ProductCategory category;
   final bool isDark;
   final bool isSubcategory;
+  final bool expanded;
   final VoidCallback onTap;
 
   const _CategoryItem({
     required this.category,
     required this.isDark,
     this.isSubcategory = false,
+    this.expanded = false,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Circular image
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isDark ? Colors.grey[800] : Colors.grey[100],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: ClipOval(
+            child: CachedNetworkImage(
+              imageUrl: ImageHelper.parse(category.mainImage) ?? '',
+              fit: BoxFit.cover,
+              memCacheWidth: 100,
+              placeholder: (_, __) => Image.asset(
+                'assets/images/category_loadingorfailbak.png',
+                fit: BoxFit.cover,
+              ),
+              errorWidget: (_, __, ___) => Image.asset(
+                'assets/images/category_loadingorfailbak.png',
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Name
+        Text(
+          category.name,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.white70 : Colors.black87,
+            height: 1.2,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+    
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: 76,
-        height: 95,
-        margin: const EdgeInsets.only(right: 8, bottom: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Circular image
-            Container(
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isDark ? Colors.grey[800] : Colors.grey[100],
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ClipOval(
-                child: CachedNetworkImage(
-                  imageUrl: ImageHelper.parse(category.mainImage) ?? '',
-                  fit: BoxFit.cover,
-                  memCacheWidth: 120,
-                  placeholder: (_, __) => Image.asset(
-                    'assets/images/category_loadingorfailbak.png',
-                    fit: BoxFit.cover,
-                  ),
-                  errorWidget: (_, __, ___) => Image.asset(
-                    'assets/images/category_loadingorfailbak.png',
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
+      child: expanded
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: content,
+            )
+          : Container(
+              width: 64,
+              height: 80,
+              margin: const EdgeInsets.only(right: 6, bottom: 4),
+              child: content,
             ),
-            const SizedBox(height: 6),
-            // Name
-            Flexible(
-              child: Text(
-                category.name,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.white70 : Colors.black87,
-                  height: 1.2,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -509,15 +548,15 @@ class _AllCategoriesButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 76,
-        height: 95,
-        margin: const EdgeInsets.only(right: 8, bottom: 6),
+        width: 64,
+        height: 80,
+        margin: const EdgeInsets.only(right: 6, bottom: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 54,
-              height: 54,
+              width: 46,
+              height: 46,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: AppColors.primary500.withOpacity(0.1),
@@ -528,15 +567,15 @@ class _AllCategoriesButton extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.grid_view_rounded,
-                size: 22,
+                size: 18,
                 color: AppColors.primary500,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
               'All',
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: FontWeight.w600,
                 color: AppColors.primary500,
               ),
@@ -545,6 +584,71 @@ class _AllCategoriesButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "View All" button for subcategories grid (same style as _AllCategoriesButton)
+class _ViewAllSubcategoriesButton extends StatelessWidget {
+  final bool isDark;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  const _ViewAllSubcategoriesButton({
+    required this.isDark,
+    this.expanded = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.primary500.withOpacity(0.1),
+            border: Border.all(
+              color: AppColors.primary500.withOpacity(0.3),
+              width: 1.5,
+            ),
+          ),
+          child: const Icon(
+            Iconsax.arrow_right_3,
+            size: 18,
+            color: AppColors.primary500,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'View All',
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            color: AppColors.primary500,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+    
+    return GestureDetector(
+      onTap: onTap,
+      child: expanded
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: content,
+            )
+          : Container(
+              width: 64,
+              height: 80,
+              margin: const EdgeInsets.only(right: 6, bottom: 4),
+              child: content,
+            ),
     );
   }
 }

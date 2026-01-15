@@ -1,5 +1,5 @@
 name: chihelo_frontend
-description: "LuxeMarket - A premium shopping experience"
+description: "Chibox - Your Premium Shopping Experience"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -28,11 +28,19 @@ dependencies:
 
   # Storage
   shared_preferences: ^2.2.3
+  
+  # Firebase
+  firebase_core: ^3.3.0
+  firebase_messaging: ^15.0.4
+  flutter_local_notifications: ^17.2.4
 
   # Image Handling
   cached_network_image: ^3.3.1
   image_cropper: ^5.0.1
   flutter_image_compress: ^2.1.0
+  camera: ^0.10.6
+  photo_view: ^0.15.0
+  image_gallery_saver_plus: ^3.0.5
 
   # Animations
   flutter_animate: ^4.5.0
@@ -51,11 +59,17 @@ dependencies:
   custom_refresh_indicator: ^4.0.1
   lottie: ^3.1.3
   image_picker: ^1.1.2
-  flutter_map: ^7.0.2
-  latlong2: ^0.9.1
+  google_maps_flutter: ^2.5.3
   geolocator: ^13.0.2
   local_auth: ^2.2.0
   flutter_secure_storage: ^9.2.2
+  
+  # WebView - Payment Integration
+  webview_flutter: ^4.8.0
+  
+  # ML/AI - Object Detection
+  google_mlkit_object_detection: ^0.13.0
+  image: ^4.2.0  # For precise image cropping
 
 dev_dependencies:
   flutter_test:

@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:flutter_map/flutter_map.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../../../core/theme/theme.dart';
 import '../../../core/services/address_service.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/models/address_model.dart';
 import 'map_picker_screen.dart';
 
+const String _googleApiKey = 'AIzaSyDtPU6YFH19qOs4IVdJIgEkyTOgRrNmgCE';
+
 class AddAddressScreen extends StatefulWidget {
   final Address? addressToEdit;
-  const AddAddressScreen({super.key, this.addressToEdit});
+  /// When true, navigating back returns to checkout flow
+  final bool fromCheckout;
+  const AddAddressScreen({super.key, this.addressToEdit, this.fromCheckout = false});
 
   @override
   State<AddAddressScreen> createState() => _AddAddressScreenState();
@@ -43,9 +47,32 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
     super.initState();
     
     final address = widget.addressToEdit;
-    _firstNameController = TextEditingController(text: address?.firstName ?? '');
-    _lastNameController = TextEditingController(text: address?.lastName ?? '');
-    _phoneController = TextEditingController(text: address?.phoneNumber ?? '');
+    
+    // Auto-fill from user profile if adding new address (not editing)
+    String initialFirstName = address?.firstName ?? '';
+    String initialLastName = address?.lastName ?? '';
+    String initialPhone = address?.phoneNumber ?? '';
+    String initialCountryCode = address?.countryCode ?? '+961';
+    
+    if (address == null) {
+      // New address - auto-fill from user profile
+      final authService = AuthService();
+      final user = authService.currentUser;
+      if (user != null) {
+        initialFirstName = user.firstName;
+        initialLastName = user.lastName;
+        initialPhone = user.phoneNumber;
+        if (user.countryCode.isNotEmpty) {
+          initialCountryCode = user.countryCode.startsWith('+') 
+              ? user.countryCode 
+              : '+${user.countryCode}';
+        }
+      }
+    }
+    
+    _firstNameController = TextEditingController(text: initialFirstName);
+    _lastNameController = TextEditingController(text: initialLastName);
+    _phoneController = TextEditingController(text: initialPhone);
     _routeNameController = TextEditingController(text: address?.routeName ?? '');
     _buildingNameController = TextEditingController(text: address?.buildingName ?? '');
     _floorNumberController = TextEditingController(text: address?.floorNumber.toString() ?? '');
@@ -57,6 +84,12 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       _selectedCity = address.city;
       if (address.latitude != null && address.longitude != null) {
         _selectedLocation = LatLng(address.latitude!, address.longitude!);
+      }
+    } else {
+      _countryCode = initialCountryCode;
+      // Auto-select "Set as Default" when adding new address from checkout
+      if (widget.fromCheckout) {
+        _isDefault = true;
       }
     }
 
@@ -83,17 +116,62 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
     setState(() => _isAutoFilling = true);
     try {
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.latitude}&lon=${location.longitude}&accept-language=en'
+        'https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.latitude},${location.longitude}&key=$_googleApiKey&language=en&result_type=street_address|premise|subpremise|route'
       );
-      final response = await http.get(url, headers: {'User-Agent': 'ChiHeloApp/1.0'});
+      final response = await http.get(url);
       
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final address = data['address'];
         
-        if (address != null) {
-          final countryName = address['country'] as String?;
-          final cityName = (address['city'] ?? address['town'] ?? address['village'] ?? address['state']) as String?;
+        if (data['status'] == 'OK' && data['results'] != null && data['results'].isNotEmpty) {
+          // Get the most detailed result (first one is usually the most specific)
+          final result = data['results'][0];
+          final addressComponents = result['address_components'] as List;
+          
+          String? countryName;
+          String? cityName;
+          String? districtName;
+          String? neighborhoodName;
+          String? streetName;
+          String? streetNumber;
+          String? buildingName;
+          String? premise;
+          
+          for (var component in addressComponents) {
+            final types = component['types'] as List;
+            final longName = component['long_name'] as String?;
+            
+            if (types.contains('country')) {
+              countryName = longName;
+            } else if (types.contains('administrative_area_level_1')) {
+              // State/Province/Region
+              districtName ??= longName;
+            } else if (types.contains('administrative_area_level_2')) {
+              // County/District
+              districtName ??= longName;
+            } else if (types.contains('locality')) {
+              // City
+              cityName = longName;
+            } else if (types.contains('sublocality_level_1') || types.contains('sublocality')) {
+              // Neighborhood/Area
+              neighborhoodName = longName;
+            } else if (types.contains('route')) {
+              // Street name
+              streetName = longName;
+            } else if (types.contains('street_number')) {
+              // Street number
+              streetNumber = longName;
+            } else if (types.contains('premise')) {
+              // Building name
+              premise = longName;
+            } else if (types.contains('establishment') || types.contains('point_of_interest')) {
+              // Named place/building
+              buildingName ??= longName;
+            }
+          }
+          
+          // Use neighborhood or district as city fallback
+          cityName ??= neighborhoodName ?? districtName;
           
           // 1. Match Country
           if (countryName != null) {
@@ -101,7 +179,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
             Country? matchedCountry;
             try {
               matchedCountry = countries.firstWhere(
-                (c) => c.name.toLowerCase().contains(countryName.toLowerCase()) || countryName.toLowerCase().contains(c.name.toLowerCase()),
+                (c) => c.name.toLowerCase().contains(countryName!.toLowerCase()) || countryName!.toLowerCase().contains(c.name.toLowerCase()),
               );
             } catch (_) {}
             
@@ -111,22 +189,47 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                // 2. Fetch Cities for this country
                await context.read<AddressService>().fetchCities(matchedCountry.id);
                
-               // 3. Match City
-               if (cityName != null) {
-                 final cities = context.read<AddressService>().cities;
+               // 3. Match City - try multiple fields
+               final citiesToTry = [cityName, neighborhoodName, districtName].whereType<String>();
+               final cities = context.read<AddressService>().cities;
+               
+               for (final cityToMatch in citiesToTry) {
                  try {
                    final matchedCity = cities.firstWhere(
-                     (c) => c.name.toLowerCase().contains(cityName.toLowerCase()) || cityName.toLowerCase().contains(c.name.toLowerCase()),
+                     (c) => c.name.toLowerCase().contains(cityToMatch.toLowerCase()) || 
+                            cityToMatch.toLowerCase().contains(c.name.toLowerCase()),
                    );
                    setState(() => _selectedCity = matchedCity);
+                   break; // Found a match, stop searching
                  } catch (_) {}
                }
             }
           }
           
-          // Auto-fill street/building if available
-          if (address['road'] != null) _routeNameController.text = address['road'];
-          if (address['house_number'] != null) _buildingNameController.text = address['house_number'];
+          // Build the route/street name with neighborhood if available
+          String fullStreetName = '';
+          if (streetName != null) {
+            fullStreetName = streetName;
+            if (neighborhoodName != null && neighborhoodName != cityName) {
+              fullStreetName = '$streetName, $neighborhoodName';
+            }
+          } else if (neighborhoodName != null) {
+            fullStreetName = neighborhoodName;
+          }
+          
+          // Auto-fill street/route name
+          if (fullStreetName.isNotEmpty) {
+            _routeNameController.text = fullStreetName;
+          }
+          
+          // Auto-fill building name - prioritize premise, then establishment, then street number
+          if (premise != null && premise.isNotEmpty) {
+            _buildingNameController.text = premise;
+          } else if (buildingName != null && buildingName.isNotEmpty) {
+            _buildingNameController.text = buildingName;
+          } else if (streetNumber != null && streetNumber.isNotEmpty) {
+            _buildingNameController.text = streetNumber;
+          }
         }
       }
     } catch (e) {
@@ -181,9 +284,15 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       'latitude': _selectedLocation?.latitude,
     };
 
-    final success = widget.addressToEdit != null
-        ? await context.read<AddressService>().updateAddress(widget.addressToEdit!.id, data)
-        : await context.read<AddressService>().createAddress(data);
+    Address? createdAddress;
+    bool success = false;
+    
+    if (widget.addressToEdit != null) {
+      success = await context.read<AddressService>().updateAddress(widget.addressToEdit!.id, data);
+    } else {
+      createdAddress = await context.read<AddressService>().createAddress(data);
+      success = createdAddress != null;
+    }
 
     // If updating and set as default is checked, call setDefaultAddress explicitly
     // because the backend update endpoint doesn't handle is_default
@@ -194,7 +303,12 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
     if (mounted) {
       setState(() => _isSubmitting = false);
       if (success) {
-        Navigator.pop(context);
+        if (widget.fromCheckout) {
+          // Return the newly created address to checkout
+          Navigator.pop(context, createdAddress);
+        } else {
+          Navigator.pop(context);
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.read<AddressService>().error ?? 'Failed to ${widget.addressToEdit != null ? 'update' : 'create'} address')),
@@ -250,28 +364,24 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                     child: Stack(
                       children: [
                         if (_selectedLocation != null)
-                          FlutterMap(
-                            options: MapOptions(
-                              initialCenter: _selectedLocation!,
-                              initialZoom: 15.0,
-                              interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                          GoogleMap(
+                            initialCameraPosition: CameraPosition(
+                              target: _selectedLocation!,
+                              zoom: 15.0,
                             ),
-                            children: [
-                              TileLayer(
-                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                userAgentPackageName: 'com.chihelo.app',
+                            scrollGesturesEnabled: false,
+                            zoomGesturesEnabled: false,
+                            rotateGesturesEnabled: false,
+                            tiltGesturesEnabled: false,
+                            zoomControlsEnabled: false,
+                            myLocationButtonEnabled: false,
+                            markers: {
+                              Marker(
+                                markerId: const MarkerId('selected_location'),
+                                position: _selectedLocation!,
+                                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
                               ),
-                              MarkerLayer(
-                                markers: [
-                                  Marker(
-                                    point: _selectedLocation!,
-                                    width: 40,
-                                    height: 40,
-                                    child: const Icon(Iconsax.location5, color: AppColors.primary500, size: 40),
-                                  ),
-                                ],
-                              ),
-                            ],
+                            },
                           )
                         else
                           Center(
