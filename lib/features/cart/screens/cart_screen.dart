@@ -152,6 +152,7 @@ class _CartScreenState extends State<CartScreen> {
   
   /// Build shipping cost row for a cart item
   /// Shows "China → Lebanon" with lowest shipping cost (sea or air)
+  /// Shows "AI Processing..." if estimation is in progress
   Widget _buildShippingCostRow(int productId, bool isDark) {
     if (_shippingComparison == null) {
       if (_isLoadingShipping) {
@@ -179,6 +180,47 @@ class _CartScreenState extends State<CartScreen> {
         );
       }
       return const SizedBox.shrink();
+    }
+    
+    // Check if AI is still processing this product
+    final isProcessing = _shippingComparison!.isProductProcessing(productId);
+    
+    if (isProcessing) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.warning.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: AppColors.warning,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '🇨🇳 → 🇱🇧',
+                style: const TextStyle(fontSize: 11),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'AI Processing...',
+                style: AppTypography.bodySmall(
+                  color: AppColors.warning,
+                ).copyWith(fontWeight: FontWeight.w500, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     
     final shippingInfo = _shippingComparison!.getLowestCostForProduct(productId);

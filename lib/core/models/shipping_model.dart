@@ -288,6 +288,18 @@ class ShippingComparison {
     );
   }
   
+  /// Check if a specific product is currently being processed by AI
+  bool isProductProcessing(int productId) {
+    // Check if in the processing list
+    if (processingProductIds.contains(productId)) return true;
+    
+    // Also check item-level ai_processing flag
+    final airItem = air.items.where((i) => i.productId == productId).firstOrNull;
+    final seaItem = sea.items.where((i) => i.productId == productId).firstOrNull;
+    
+    return (airItem?.isAiProcessing ?? false) || (seaItem?.isAiProcessing ?? false);
+  }
+  
   /// Get lowest shipping cost and method for a specific product
   /// Returns a record with (cost, method, methodIcon)
   ({double cost, String method, String icon})? getLowestCostForProduct(int productId) {
