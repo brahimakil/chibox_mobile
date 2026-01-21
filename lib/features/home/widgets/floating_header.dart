@@ -9,6 +9,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:ui';
 import 'dart:async';
 import 'dart:io';
@@ -426,6 +427,36 @@ class _FloatingHeaderState extends State<FloatingHeader> {
                             ),
                           ),
                           const SizedBox(width: 10),
+                          // Camera button for visual search
+                          GestureDetector(
+                            onTap: () {
+                              _removeOverlay();
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const VisualSearchScreen(),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary500.withOpacity(0.1),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AppColors.primary500.withOpacity(0.3),
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: const Icon(
+                                Iconsax.camera,
+                                size: 20,
+                                color: AppColors.primary500,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
                           TextButton(
                             onPressed: () {
                               _searchController.clear();
@@ -820,11 +851,6 @@ class _FloatingHeaderState extends State<FloatingHeader> {
     try {
       final croppedFile = await ImageCropper().cropImage(
         sourcePath: imagePath,
-        aspectRatioPresets: [
-          CropAspectRatioPreset.original,
-          CropAspectRatioPreset.square,
-          CropAspectRatioPreset.ratio4x3,
-        ],
         uiSettings: [
           AndroidUiSettings(
             toolbarTitle: 'Crop Image',
@@ -832,9 +858,19 @@ class _FloatingHeaderState extends State<FloatingHeader> {
             toolbarWidgetColor: Colors.white,
             initAspectRatio: CropAspectRatioPreset.original,
             lockAspectRatio: false,
+            aspectRatioPresets: [
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio4x3,
+            ],
           ),
           IOSUiSettings(
             title: 'Crop Image',
+            aspectRatioPresets: [
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio4x3,
+            ],
           ),
         ],
       );
@@ -1003,8 +1039,8 @@ class _FloatingHeaderState extends State<FloatingHeader> {
                 if (widget.opacity < 0.5)
                   Padding(
                     padding: const EdgeInsets.only(right: 10),
-                    child: Image.asset(
-                      'assets/images/chihelo dark color  2363x2363.png',
+                    child: SvgPicture.asset(
+                      'assets/images/chiBox Nav logo 300x300.svg',
                       width: 32,
                       height: 32,
                       fit: BoxFit.contain,

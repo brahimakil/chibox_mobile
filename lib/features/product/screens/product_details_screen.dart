@@ -57,6 +57,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   // ValueNotifier for gallery images - allows dynamic updates
   final ValueNotifier<List<String>> _galleryImagesNotifier = ValueNotifier([]);
   
+  // Scroll-based title visibility
+  double _scrollOffset = 0;
+  
   // Variants selection
   Map<String, String> _selectedOptions = {};
   ProductVariant? _selectedVariant;
@@ -73,6 +76,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   @override
   void dispose() {
     _wishlistSubscription?.cancel();
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _similarScrollController.dispose();
     _galleryImagesNotifier.dispose();
@@ -86,6 +90,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     
     // Create a fresh scroll controller for similar products
     _similarScrollController = ScrollController();
+    
+    // Listen for scroll to show/hide product name in app bar
+    _scrollController.addListener(_onScroll);
     
     // Listen for global wishlist updates
     _wishlistSubscription = WishlistHelper.onStatusChanged.listen((update) {
@@ -106,6 +113,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       }
       _fetchFullDetails();
     });
+  }
+  
+  void _onScroll() {
+    if (!mounted) return;
+    final offset = _scrollController.offset;
+    if (offset != _scrollOffset) {
+      setState(() {
+        _scrollOffset = offset;
+      });
+    }
   }
   
   // Track if initial similar products fetch has been started (to prevent duplicates)
@@ -1246,14 +1263,46 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     expandedHeight: 300,
                     pinned: true,
                     backgroundColor: isDark ? DarkThemeColors.surface : LightThemeColors.surface,
+                    // Title that appears when scrolled
+                    title: AnimatedOpacity(
+                      opacity: _scrollOffset > 200 ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: GestureDetector(
+                        onTap: () {
+                          _scrollController.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                          );
+                        },
+                        child: Text(
+                          _product.name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    centerTitle: true,
+                    titleSpacing: 0,
                     leading: Container(
                       margin: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.black54 : Colors.white70,
+                        color: _scrollOffset > 200 
+                            ? Colors.transparent 
+                            : (isDark ? Colors.black54 : Colors.white70),
                         shape: BoxShape.circle,
                       ),
                       child: IconButton(
-                        icon: Icon(Icons.arrow_back_ios_new, size: 18, color: isDark ? Colors.white : Colors.black),
+                        icon: Icon(
+                          Icons.arrow_back_ios_new, 
+                          size: 18, 
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
                         onPressed: () => Navigator.pop(context),
                       ),
                     ),
@@ -1261,7 +1310,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       Container(
                         margin: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: isDark ? Colors.black54 : Colors.white70,
+                          color: _scrollOffset > 200 
+                              ? Colors.transparent 
+                              : (isDark ? Colors.black54 : Colors.white70),
                           shape: BoxShape.circle,
                         ),
                         child: IconButton(

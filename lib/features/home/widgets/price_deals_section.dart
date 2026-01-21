@@ -261,19 +261,13 @@ class _PriceDealsProductCard extends StatelessWidget {
                   width: double.infinity,
                   height: double.infinity,
                   fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    color: isDark ? Colors.grey[800] : Colors.grey[200],
-                    child: const Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
+                  placeholder: (context, url) => Image.asset(
+                    'assets/images/productfailbackorskeleton_loading.png',
+                    fit: BoxFit.cover,
                   ),
-                  errorWidget: (context, url, error) => Container(
-                    color: isDark ? Colors.grey[800] : Colors.grey[200],
-                    child: const Icon(Icons.image_not_supported, size: 24),
+                  errorWidget: (context, url, error) => Image.asset(
+                    'assets/images/productfailbackorskeleton_loading.png',
+                    fit: BoxFit.cover,
                   ),
                 ),
               ),

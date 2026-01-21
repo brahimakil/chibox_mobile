@@ -112,7 +112,8 @@ class CartService extends ChangeNotifier {
         // Check if it might be a missing product (Tampi case)
         // The error message is usually "Product not found" or similar.
         // We'll try to "import" it by fetching details.
-        debugPrint('⚠️ Add to cart failed. Attempting to import product details...');
+        debugPrint('⚠️ Add to cart failed: ${response.message} (status: ${response.statusCode})');
+        debugPrint('⚠️ Attempting to import product details...');
         
         try {
           // Trigger import by fetching details

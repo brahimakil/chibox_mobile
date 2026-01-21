@@ -210,28 +210,19 @@ class _ProductCardState extends State<ProductCard> {
                               fit: BoxFit.cover,
                               memCacheWidth: 400, // Limit memory cache size
                               maxWidthDiskCache: 400, // Limit disk cache size
-                              placeholder: (_, __) => Container(
-                                color: isDark ? AppColors.neutral800 : AppColors.neutral100,
-                                child: Image.asset(
-                                  'assets/images/productfailbackorskeleton_loading.png',
-                                  fit: BoxFit.cover,
-                                ),
+                              placeholder: (_, __) => Image.asset(
+                                'assets/images/productfailbackorskeleton_loading.png',
+                                fit: BoxFit.cover,
                               ),
-                              errorWidget: (_, __, ___) => Container(
-                                color: isDark ? AppColors.neutral800 : AppColors.neutral100,
-                                  child: Image.asset(
-                                    'assets/images/productfailbackorskeleton_loading.png',
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              )
-                            : Container(
-                                color: isDark ? AppColors.neutral800 : AppColors.neutral100,
-                                child: Image.asset(
-                                  'assets/images/productfailbackorskeleton_loading.png',
-                                  fit: BoxFit.cover,
-                                ),
+                              errorWidget: (_, __, ___) => Image.asset(
+                                'assets/images/productfailbackorskeleton_loading.png',
+                                fit: BoxFit.cover,
                               ),
+                            )
+                          : Image.asset(
+                              'assets/images/productfailbackorskeleton_loading.png',
+                              fit: BoxFit.cover,
+                            ),
                     ),
 
                     // Discount Badge (Only show if original price is available)

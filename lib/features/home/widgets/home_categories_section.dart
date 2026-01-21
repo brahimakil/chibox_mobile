@@ -689,6 +689,10 @@ class _SubcategoryListItem extends StatelessWidget {
                 width: 44,
                 height: 44,
                 fit: BoxFit.cover,
+                memCacheWidth: 100,
+                memCacheHeight: 100,
+                maxWidthDiskCache: 100,
+                maxHeightDiskCache: 100,
                 placeholder: (_, __) => Image.asset(
                   'assets/images/category_loadingorfailbak.png',
                   width: 44,

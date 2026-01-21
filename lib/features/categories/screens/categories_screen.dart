@@ -14,6 +14,7 @@ import '../../../core/models/category_model.dart';
 import '../../../core/utils/image_helper.dart';
 import '../../../shared/widgets/widgets.dart';
 import '../../home/widgets/floating_header.dart';
+import '../../home/screens/visual_search_screen.dart';
 import 'category_products_screen.dart';
 
 class CategoriesScreen extends StatefulWidget {
@@ -200,6 +201,31 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 10),
+                      // Camera button for visual search
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const VisualSearchScreen(),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: isDark ? AppColors.neutral800 : const Color(0xFFF5F5F5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Iconsax.camera,
+                            size: 20,
+                            color: isDark ? AppColors.neutral400 : AppColors.neutral500,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -349,6 +375,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,
+                      memCacheWidth: 100,
+                      memCacheHeight: 100,
+                      maxWidthDiskCache: 100,
+                      maxHeightDiskCache: 100,
                       placeholder: (_, __) => Image.asset(
                         'assets/images/category_loadingorfailbak.png',
                         width: 48,
@@ -676,9 +706,19 @@ class _SubcategoriesPanelState extends State<_SubcategoriesPanel> {
                 height: 100,
                 width: double.infinity,
                 fit: BoxFit.cover,
+                memCacheWidth: 400,
+                memCacheHeight: 200,
+                maxWidthDiskCache: 400,
+                maxHeightDiskCache: 200,
                 httpHeaders: const {
                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 },
+                placeholder: (_, __) => Image.asset(
+                  'assets/images/category_loadingorfailbak.png',
+                  height: 100,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
                 errorWidget: (context, url, error) => Image.asset(
                   'assets/images/category_loadingorfailbak.png',
                   height: 100,
@@ -739,92 +779,108 @@ class _SubcategoriesPanelState extends State<_SubcategoriesPanel> {
             ),
           )
         else
-          // SHEIN-style grid: 3 columns, same height, max 3 lines with ellipsis
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 12,
-              childAspectRatio: 0.72, // Fixed aspect ratio for uniform height
-            ),
-            itemCount: _subcategories.length,
-            itemBuilder: (context, index) {
-              final sub = _subcategories[index];
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CategoryProductsScreen(
-                        category: sub,
-                      ),
+          // SHEIN-style grid: 3 columns, responsive to screen size
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Calculate responsive sizes based on available width
+              final availableWidth = constraints.maxWidth;
+              final itemWidth = (availableWidth - 24) / 3; // 3 columns with spacing
+              final circleSize = (itemWidth * 0.7).clamp(48.0, 64.0); // Responsive circle size
+              
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 0.68, // Slightly taller to fit text
+                ),
+                itemCount: _subcategories.length,
+                itemBuilder: (context, index) {
+                  final sub = _subcategories[index];
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CategoryProductsScreen(
+                            category: sub,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Responsive circle container
+                        Container(
+                          width: circleSize,
+                          height: circleSize,
+                          decoration: BoxDecoration(
+                            color: widget.isDark ? AppColors.neutral900 : AppColors.neutral50,
+                            shape: BoxShape.circle,
+                          ),
+                          child: ClipOval(
+                            child: SizedBox(
+                              width: circleSize,
+                              height: circleSize,
+                              child: ImageHelper.parse(sub.mainImage).isNotEmpty
+                                  ? CachedNetworkImage(
+                                      imageUrl: ImageHelper.parse(sub.mainImage),
+                                      width: circleSize,
+                                      height: circleSize,
+                                      fit: BoxFit.cover,
+                                      memCacheWidth: 128,
+                                      memCacheHeight: 128,
+                                      maxWidthDiskCache: 128,
+                                      maxHeightDiskCache: 128,
+                                      httpHeaders: const {
+                                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                                      },
+                                      placeholder: (context, url) => Image.asset(
+                                        'assets/images/category_loadingorfailbak.png',
+                                        width: circleSize,
+                                        height: circleSize,
+                                        fit: BoxFit.cover,
+                                      ),
+                                      errorWidget: (context, url, error) => Image.asset(
+                                        'assets/images/category_loadingorfailbak.png',
+                                        width: circleSize,
+                                        height: circleSize,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
+                                  : Image.asset(
+                                      'assets/images/category_loadingorfailbak.png',
+                                      width: circleSize,
+                                      height: circleSize,
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        // Text with proper constraints - no Expanded needed
+                        SizedBox(
+                          height: 36, // Fixed height for 2-3 lines
+                          child: Text(
+                            sub.name,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              height: 1.2,
+                              color: widget.isDark ? AppColors.neutral300 : AppColors.neutral700,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 },
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Fixed size circle container for consistent shape
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: widget.isDark ? AppColors.neutral900 : AppColors.neutral50,
-                        shape: BoxShape.circle,
-                      ),
-                      child: ClipOval(
-                        child: SizedBox(
-                          width: 64,
-                          height: 64,
-                          child: ImageHelper.parse(sub.mainImage).isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: ImageHelper.parse(sub.mainImage),
-                                  width: 64,
-                                  height: 64,
-                                  fit: BoxFit.cover,
-                                  httpHeaders: const {
-                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                                  },
-                                  placeholder: (context, url) => Image.asset(
-                                    'assets/images/category_loadingorfailbak.png',
-                                    width: 64,
-                                    height: 64,
-                                    fit: BoxFit.cover,
-                                  ),
-                                  errorWidget: (context, url, error) => Image.asset(
-                                    'assets/images/category_loadingorfailbak.png',
-                                    width: 64,
-                                    height: 64,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                              : Image.asset(
-                                  'assets/images/category_loadingorfailbak.png',
-                                  width: 64,
-                                  height: 64,
-                                  fit: BoxFit.cover,
-                                ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    // SHEIN-style: max 3 lines with ellipsis for professional look
-                    Expanded(
-                      child: Text(
-                        sub.name,
-                        textAlign: TextAlign.center,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.bodySmall(
-                          color: widget.isDark ? AppColors.neutral300 : AppColors.neutral700,
-                        ).copyWith(fontSize: 11, height: 1.3),
-                      ),
-                    ),
-                  ],
-                ),
               );
             },
           ),

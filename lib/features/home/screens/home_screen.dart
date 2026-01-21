@@ -338,10 +338,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   valueListenable: _selectedCategoryNotifier,
                   builder: (context, selectedCategory, _) {
                     if (selectedCategory != null) return const SliverToBoxAdapter(child: SizedBox.shrink());
-                    if (homeService.hotSellings.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+                    // Show section with skeleton during loading, or with products when loaded
+                    final isLoading = homeService.isLoading && homeService.hotSellings.isEmpty;
+                    if (homeService.hotSellings.isEmpty && !isLoading) return const SliverToBoxAdapter(child: SizedBox.shrink());
                     return SliverToBoxAdapter(
                       child: RepaintBoundary(
-                        child: HotSellingsSection(products: homeService.hotSellings),
+                        child: HotSellingsSection(
+                          products: homeService.hotSellings,
+                          isLoading: isLoading,
+                        ),
                       ),
                     );
                   },
@@ -352,10 +357,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   valueListenable: _selectedCategoryNotifier,
                   builder: (context, selectedCategory, _) {
                     if (selectedCategory != null) return const SliverToBoxAdapter(child: SizedBox.shrink());
-                    if (homeService.oneDollarProducts.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+                    // Show section with skeleton during loading
+                    final isLoading = homeService.isLoading && homeService.oneDollarProducts.isEmpty;
+                    if (homeService.oneDollarProducts.isEmpty && !isLoading) return const SliverToBoxAdapter(child: SizedBox.shrink());
                     return SliverToBoxAdapter(
                       child: RepaintBoundary(
-                        child: _PriceDealsTabsSection(products: homeService.oneDollarProducts),
+                        child: _PriceDealsTabsSection(
+                          products: homeService.oneDollarProducts,
+                          isLoading: isLoading,
+                        ),
                       ),
                     );
                   },
@@ -1101,8 +1111,12 @@ class _AllProductsHeader extends StatelessWidget {
 /// Price Deals Tabs Section - Shows $1, $2, $5, $7 deal tabs
 class _PriceDealsTabsSection extends StatefulWidget {
   final List<Product> products;
+  final bool isLoading;
 
-  const _PriceDealsTabsSection({required this.products});
+  const _PriceDealsTabsSection({
+    required this.products,
+    this.isLoading = false,
+  });
 
   @override
   State<_PriceDealsTabsSection> createState() => _PriceDealsTabsSectionState();
@@ -1270,14 +1284,87 @@ class _PriceDealsTabsSectionState extends State<_PriceDealsTabsSection> {
           // Products for selected tab (using PriceDealsSection's product cards)
           SizedBox(
             height: 200,
-            child: _PriceDealsProductList(
-              minPrice: range['min'] as double,
-              maxPrice: range['max'] as double,
-              accentColor: range['color'] as Color,
-            ),
+            child: widget.isLoading
+                ? _buildSkeletonList(isDark)
+                : _PriceDealsProductList(
+                    key: ValueKey('price_deals_${range['min']}_${range['max']}'),
+                    minPrice: range['min'] as double,
+                    maxPrice: range['max'] as double,
+                    accentColor: range['color'] as Color,
+                  ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSkeletonList(bool isDark) {
+    final baseColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
+    final highlightColor = isDark ? Colors.grey[700]! : Colors.grey[100]!;
+
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 5,
+      itemBuilder: (context, index) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: index == 0 ? 0 : 4,
+            right: index == 4 ? 0 : 4,
+          ),
+          child: Shimmer.fromColors(
+            baseColor: baseColor,
+            highlightColor: highlightColor,
+            child: Container(
+              width: 130,
+              decoration: BoxDecoration(
+                color: baseColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Image placeholder
+                  Container(
+                    height: 130,
+                    decoration: BoxDecoration(
+                      color: baseColor,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Title placeholder
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Container(
+                      height: 12,
+                      width: 100,
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // Price placeholder
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Container(
+                      height: 14,
+                      width: 60,
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1289,6 +1376,7 @@ class _PriceDealsProductList extends StatefulWidget {
   final Color accentColor;
 
   const _PriceDealsProductList({
+    super.key,
     required this.minPrice,
     required this.maxPrice,
     required this.accentColor,
@@ -1356,18 +1444,72 @@ class _PriceDealsProductListState extends State<_PriceDealsProductList> {
       return ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8),
+        physics: const NeverScrollableScrollPhysics(),
         itemCount: 5,
         itemBuilder: (context, index) {
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Shimmer.fromColors(
-              baseColor: isDark ? Colors.grey[800]! : Colors.grey[300]!,
-              highlightColor: isDark ? Colors.grey[700]! : Colors.grey[100]!,
+            padding: EdgeInsets.only(
+              left: index == 0 ? 0 : 4,
+              right: index == 4 ? 0 : 4,
+            ),
+            child: SizedBox(
+              width: 130,
               child: Container(
-                width: 130,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isDark ? const Color(0xFF2A2A2A) : Colors.grey[50],
                   borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark 
+                        ? Colors.white.withOpacity(0.08) 
+                        : Colors.black.withOpacity(0.06),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Product Image placeholder with the man image
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
+                        child: Image.asset(
+                          'assets/images/productfailbackorskeleton_loading.png',
+                          width: double.infinity,
+                          height: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    // Product Info placeholder
+                    Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Shimmer.fromColors(
+                        baseColor: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                        highlightColor: isDark ? Colors.grey[700]! : Colors.grey[100]!,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              height: 10,
+                              width: 100,
+                              decoration: BoxDecoration(
+                                color: isDark ? Colors.grey[800] : Colors.grey[300],
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Container(
+                              height: 10,
+                              width: 60,
+                              decoration: BoxDecoration(
+                                color: isDark ? Colors.grey[800] : Colors.grey[300],
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1468,19 +1610,13 @@ class _PriceDealsProductCard extends StatelessWidget {
                   width: double.infinity,
                   height: double.infinity,
                   fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    color: isDark ? Colors.grey[800] : Colors.grey[200],
-                    child: const Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
+                  placeholder: (context, url) => Image.asset(
+                    'assets/images/productfailbackorskeleton_loading.png',
+                    fit: BoxFit.cover,
                   ),
-                  errorWidget: (context, url, error) => Container(
-                    color: isDark ? Colors.grey[800] : Colors.grey[200],
-                    child: const Icon(Icons.image_not_supported, size: 24),
+                  errorWidget: (context, url, error) => Image.asset(
+                    'assets/images/productfailbackorskeleton_loading.png',
+                    fit: BoxFit.cover,
                   ),
                 ),
               ),

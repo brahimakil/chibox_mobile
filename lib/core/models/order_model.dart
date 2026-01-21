@@ -278,6 +278,7 @@ class OrderDetails {
   final int statusId;
   final double subtotal;
   final double shippingAmount;
+  final String? shippingMethod; // 'air' or 'sea'
   final double taxAmount;
   final double discountAmount;
   final double total;
@@ -302,6 +303,7 @@ class OrderDetails {
     required this.statusId,
     required this.subtotal,
     required this.shippingAmount,
+    this.shippingMethod,
     required this.taxAmount,
     required this.discountAmount,
     required this.total,
@@ -328,6 +330,7 @@ class OrderDetails {
       statusId: json['status_id'] ?? 0,
       subtotal: (json['subtotal'] ?? 0).toDouble(),
       shippingAmount: (json['shipping_amount'] ?? 0).toDouble(),
+      shippingMethod: json['shipping_method'],
       taxAmount: (json['tax_amount'] ?? 0).toDouble(),
       discountAmount: (json['discount_amount'] ?? 0).toDouble(),
       total: (json['total'] ?? 0).toDouble(),
@@ -351,6 +354,15 @@ class OrderDetails {
               .toList() ??
           [],
     );
+  }
+  
+  /// Get human readable shipping method name
+  String get shippingMethodName {
+    switch (shippingMethod) {
+      case 'air': return 'Air Freight ✈️';
+      case 'sea': return 'Sea Freight 🚢';
+      default: return 'Standard';
+    }
   }
 
   /// Check if order can be cancelled

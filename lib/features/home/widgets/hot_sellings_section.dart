@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../../core/theme/theme.dart';
 import '../../../core/models/product_model.dart';
 import '../../../shared/widgets/widgets.dart';
@@ -11,15 +13,18 @@ import '../screens/hot_sellings_screen.dart';
 /// see different top sellers each time they visit the app
 class HotSellingsSection extends StatelessWidget {
   final List<Product> products;
+  final bool isLoading;
 
   const HotSellingsSection({
     super.key,
     required this.products,
+    this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (products.isEmpty) return const SizedBox.shrink();
+    // Show skeleton when loading, hide when empty and not loading
+    if (products.isEmpty && !isLoading) return const SizedBox.shrink();
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -114,33 +119,105 @@ class HotSellingsSection extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // Horizontal scrolling product list
+          // Horizontal scrolling product list or skeleton
           SizedBox(
-            height: 200, // Adjust based on ProductCard size
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              itemCount: products.length,
-              itemBuilder: (context, index) {
-                final product = products[index];
-                return Padding(
-                  padding: EdgeInsets.only(
-                    left: index == 0 ? 0 : 4,
-                    right: index == products.length - 1 ? 0 : 4,
+            height: 200,
+            child: isLoading
+                ? _buildSkeletonList(isDark)
+                : ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    itemCount: products.length,
+                    itemBuilder: (context, index) {
+                      final product = products[index];
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          left: index == 0 ? 0 : 4,
+                          right: index == products.length - 1 ? 0 : 4,
+                        ),
+                        child: SizedBox(
+                          width: 130,
+                          child: _HotSellingProductCard(
+                            product: product,
+                            rank: index + 1,
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                  child: SizedBox(
-                    width: 130,
-                    child: _HotSellingProductCard(
-                      product: product,
-                      rank: index + 1,
-                    ),
-                  ),
-                );
-              },
-            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSkeletonList(bool isDark) {
+    final baseColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
+    final highlightColor = isDark ? Colors.grey[700]! : Colors.grey[100]!;
+
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 5,
+      itemBuilder: (context, index) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: index == 0 ? 0 : 4,
+            right: index == 4 ? 0 : 4,
+          ),
+          child: Shimmer.fromColors(
+            baseColor: baseColor,
+            highlightColor: highlightColor,
+            child: Container(
+              width: 130,
+              decoration: BoxDecoration(
+                color: baseColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Image placeholder
+                  Container(
+                    height: 130,
+                    decoration: BoxDecoration(
+                      color: baseColor,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Title placeholder
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Container(
+                      height: 12,
+                      width: 100,
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // Price placeholder
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Container(
+                      height: 14,
+                      width: 60,
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -185,20 +262,22 @@ class _HotSellingProductCard extends StatelessWidget {
                     child: Container(
                       width: double.infinity,
                       color: isDark ? Colors.grey[800] : Colors.grey[100],
-                      child: product.mainImage != null
-                          ? Image.network(
-                              product.mainImage!,
+                      child: product.mainImage != null && product.mainImage!.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: product.mainImage!,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Icon(
-                                Iconsax.image,
-                                size: 40,
-                                color: Colors.grey[400],
+                              placeholder: (context, url) => Image.asset(
+                                'assets/images/productfailbackorskeleton_loading.png',
+                                fit: BoxFit.cover,
+                              ),
+                              errorWidget: (context, url, error) => Image.asset(
+                                'assets/images/productfailbackorskeleton_loading.png',
+                                fit: BoxFit.cover,
                               ),
                             )
-                          : Icon(
-                              Iconsax.image,
-                              size: 40,
-                              color: Colors.grey[400],
+                          : Image.asset(
+                              'assets/images/productfailbackorskeleton_loading.png',
+                              fit: BoxFit.cover,
                             ),
                     ),
                   ),

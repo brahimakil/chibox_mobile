@@ -42,12 +42,14 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
-    _skipCountdown = widget.ad.skipDuration;
+    // Force 5 second skip duration regardless of DB value
+    _skipCountdown = 5;
     
-    // Initialize smooth progress animation
+    // Initialize smooth progress animation (minimum 5 seconds)
+    final displayDuration = widget.ad.totalDuration < 5 ? 5 : widget.ad.totalDuration;
     _progressController = AnimationController(
       vsync: this,
-      duration: Duration(seconds: widget.ad.totalDuration),
+      duration: Duration(seconds: displayDuration),
     );
     
     // Track view
@@ -134,17 +136,22 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
   }
 
   void _handleTap() {
-    if (_isCompleted || !widget.ad.hasLink) return;
+    // Only allow tap-to-skip after countdown completes
+    if (_isCompleted || !_canSkip) return;
+    
     _isCompleted = true;
     _skipTimer?.cancel();
     _progressController.stop();
     _videoController?.pause();
     
-    // Track click
-    _splashAdService.trackClick(widget.ad.id);
+    // Track click if has link, otherwise track skip
+    if (widget.ad.hasLink) {
+      _splashAdService.trackClick(widget.ad.id);
+      debugPrint('📱 Ad tapped: ${widget.ad.linkType} -> ${widget.ad.linkValue}');
+    } else {
+      _splashAdService.trackSkip(widget.ad.id);
+    }
     
-    // Navigate to home - deep link can be handled later
-    debugPrint('📱 Ad tapped: ${widget.ad.linkType} -> ${widget.ad.linkValue}');
     _navigateToHome();
   }
 
@@ -261,12 +268,22 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
         imageUrl: widget.ad.mediaUrl,
         fit: BoxFit.fitWidth,
         width: double.infinity,
+        // Fast fade for smooth appearance
+        fadeInDuration: const Duration(milliseconds: 150),
+        fadeOutDuration: Duration.zero,
         placeholder: (context, url) => Container(
           color: backgroundColor,
-          child: const Center(
-            child: CircularProgressIndicator(
-              color: AppColors.primary500,
-              strokeWidth: 2,
+          // Show brand color shimmer while loading
+          child: Center(
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppColors.primary500.withOpacity(0.7),
+                ),
+              ),
             ),
           ),
         ),
@@ -426,37 +443,40 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
     final hintColor = isDark ? Colors.white.withOpacity(0.9) : Colors.black87;
     
     return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          color: hintBg,
-          borderRadius: BorderRadius.circular(25),
-          boxShadow: isDark ? null : [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.touch_app,
-              color: hintColor,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Tap to explore',
-              style: TextStyle(
-                color: hintColor,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+      child: GestureDetector(
+        onTap: _handleTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: hintBg,
+            borderRadius: BorderRadius.circular(25),
+            boxShadow: isDark ? null : [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-            ),
-          ],
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.touch_app,
+                color: hintColor,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Tap to explore',
+                style: TextStyle(
+                  color: hintColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

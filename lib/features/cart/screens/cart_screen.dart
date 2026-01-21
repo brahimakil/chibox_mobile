@@ -14,7 +14,7 @@ import '../../../shared/widgets/guest_guard.dart';
 import '../../../core/models/product_model.dart';
 import '../../product/screens/product_details_screen.dart';
 import '../../navigation/main_shell.dart';
-import 'checkout_screen.dart';
+import 'shipping_selection_screen.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -29,6 +29,8 @@ class _CartScreenState extends State<CartScreen> {
   Key _animationKey = UniqueKey();
   // Selected cart item IDs for checkout
   Set<int> _selectedItemIds = {};
+  // Track if user manually cleared selection (to prevent auto-reselect)
+  bool _userClearedSelection = false;
 
   @override
   void initState() {
@@ -76,8 +78,13 @@ class _CartScreenState extends State<CartScreen> {
     setState(() {
       if (_selectedItemIds.contains(itemId)) {
         _selectedItemIds.remove(itemId);
+        // If user manually unselects last item, mark as intentionally cleared
+        if (_selectedItemIds.isEmpty) {
+          _userClearedSelection = true;
+        }
       } else {
         _selectedItemIds.add(itemId);
+        _userClearedSelection = false; // User is selecting items, so reset flag
       }
     });
   }
@@ -86,8 +93,10 @@ class _CartScreenState extends State<CartScreen> {
     setState(() {
       if (_selectedItemIds.length == items.length) {
         _selectedItemIds.clear();
+        _userClearedSelection = true; // User intentionally cleared all
       } else {
         _selectedItemIds = items.map((item) => item.id).toSet();
+        _userClearedSelection = false;
       }
     });
   }
@@ -217,8 +226,9 @@ class _CartScreenState extends State<CartScreen> {
             );
           }
 
-          // Ensure selected items are synced when cart updates
-          if (_selectedItemIds.isEmpty && cartService.items.isNotEmpty) {
+          // Ensure selected items are synced when cart updates (only on first load)
+          // Don't auto-select if user manually cleared selection
+          if (_selectedItemIds.isEmpty && cartService.items.isNotEmpty && !_userClearedSelection) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
                 setState(() {
@@ -478,7 +488,7 @@ class _CartScreenState extends State<CartScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => CheckoutScreen(selectedCartItemIds: _selectedItemIds.toList()),
+                                builder: (_) => ShippingSelectionScreen(selectedCartItemIds: _selectedItemIds.toList()),
                               ),
                             );
                           }

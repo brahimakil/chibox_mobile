@@ -153,6 +153,7 @@ class ApiService {
       final url = _buildUrl(endpoint, queryParams);
       debugPrint('🔴 API POST: $url');
       debugPrint('🔴 HEADERS: $_headers');
+      debugPrint('🔴 BODY: ${body != null ? jsonEncode(body) : 'null'}');
       
       final response = await client
           .post(
@@ -162,8 +163,12 @@ class ApiService {
           )
           .timeout(ApiConstants.connectionTimeout);
 
+      debugPrint('🔵 POST Response Status: ${response.statusCode}');
+      debugPrint('🔵 POST Response Body: ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}');
+      
       return _handleResponse<T>(response);
     } catch (e) {
+      debugPrint('❌ API POST Error: $e');
       return ApiResponse.error(_getErrorMessage(e));
     } finally {
       client.close();

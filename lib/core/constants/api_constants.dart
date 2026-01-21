@@ -83,6 +83,15 @@ class ApiConstants {
   static const String getProductById = '$apiPrefix-product/get-product-by-id';
   static const String searchByImage = '$apiPrefix-product/search-by-image';
 
+  // ============== SHIPPING ENDPOINTS ==============
+  static const String shippingGetMethods = '$apiPrefix-shipping/get-methods';
+  static const String shippingCalculate = '$apiPrefix-shipping/calculate';
+  static const String shippingCalculateForCart = '$apiPrefix-shipping/calculate-for-cart';
+  static const String shippingCompare = '$apiPrefix-shipping/compare';
+  static const String shippingGetProductStatus = '$apiPrefix-shipping/get-product-status';
+  static const String shippingTriggerEstimation = '$apiPrefix-shipping/trigger-estimation';
+  static const String shippingGetSettings = '$apiPrefix-shipping/get-settings';
+
   // ============== TIMEOUTS ==============
   static const Duration connectionTimeout = Duration(seconds: 90);
   static const Duration receiveTimeout = Duration(seconds: 90);

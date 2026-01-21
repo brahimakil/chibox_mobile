@@ -41,6 +41,9 @@ class _ProductVariantSheetState extends State<ProductVariantSheet> {
   
   // Current preview image from selected option
   String? _selectedOptionImage;
+  
+  // Prevent multiple taps on Add to Cart
+  bool _isAddingToCart = false;
 
   @override
   void initState() {
@@ -774,6 +777,18 @@ class _ProductVariantSheetState extends State<ProductVariantSheet> {
                   width: 50,
                   height: 50,
                   fit: BoxFit.cover,
+                  placeholder: (context, url) => Image.asset(
+                    'assets/images/productfailbackorskeleton_loading.png',
+                    width: 50,
+                    height: 50,
+                    fit: BoxFit.cover,
+                  ),
+                  errorWidget: (context, url, error) => Image.asset(
+                    'assets/images/productfailbackorskeleton_loading.png',
+                    width: 50,
+                    height: 50,
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
             ),
@@ -1068,13 +1083,17 @@ class _ProductVariantSheetState extends State<ProductVariantSheet> {
                                 width: 58,
                                 height: 58,
                                 fit: BoxFit.cover,
-                                placeholder: (context, url) => Container(
-                                  color: isDark ? AppColors.neutral800 : AppColors.neutral100,
-                                  child: const Center(child: CircularProgressIndicator(strokeWidth: 1.5)),
+                                placeholder: (context, url) => Image.asset(
+                                  'assets/images/productfailbackorskeleton_loading.png',
+                                  width: 58,
+                                  height: 58,
+                                  fit: BoxFit.cover,
                                 ),
-                                errorWidget: (context, url, error) => Container(
-                                  color: isDark ? AppColors.neutral800 : AppColors.neutral100,
-                                  child: const Icon(Iconsax.image, size: 20),
+                                errorWidget: (context, url, error) => Image.asset(
+                                  'assets/images/productfailbackorskeleton_loading.png',
+                                  width: 58,
+                                  height: 58,
+                                  fit: BoxFit.cover,
                                 ),
                               ),
                               if (isSelected)
@@ -1210,17 +1229,17 @@ class _ProductVariantSheetState extends State<ProductVariantSheet> {
                                   width: 54,
                                   height: 54,
                                   fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(
+                                  placeholder: (context, url) => Image.asset(
+                                    'assets/images/productfailbackorskeleton_loading.png',
                                     width: 54,
                                     height: 54,
-                                    color: isDark ? AppColors.neutral800 : AppColors.neutral100,
-                                    child: const Center(child: CircularProgressIndicator(strokeWidth: 1.5)),
+                                    fit: BoxFit.cover,
                                   ),
-                                  errorWidget: (context, url, error) => Container(
+                                  errorWidget: (context, url, error) => Image.asset(
+                                    'assets/images/productfailbackorskeleton_loading.png',
                                     width: 54,
                                     height: 54,
-                                    color: isDark ? AppColors.neutral800 : AppColors.neutral100,
-                                    child: const Icon(Iconsax.image, size: 18),
+                                    fit: BoxFit.cover,
                                   ),
                                 ),
                               ),
@@ -1373,17 +1392,17 @@ class _ProductVariantSheetState extends State<ProductVariantSheet> {
                                 width: 100,
                                 height: 100,
                                 fit: BoxFit.cover,
-                                placeholder: (context, url) => Container(
+                                placeholder: (context, url) => Image.asset(
+                                  'assets/images/productfailbackorskeleton_loading.png',
                                   width: 100,
                                   height: 100,
-                                  color: isDark ? AppColors.neutral800 : AppColors.neutral100,
-                                  child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                  fit: BoxFit.cover,
                                 ),
-                                errorWidget: (context, url, error) => Container(
+                                errorWidget: (context, url, error) => Image.asset(
+                                  'assets/images/productfailbackorskeleton_loading.png',
                                   width: 100,
                                   height: 100,
-                                  color: isDark ? AppColors.neutral800 : AppColors.neutral100,
-                                  child: const Icon(Iconsax.image, color: Colors.grey, size: 24),
+                                  fit: BoxFit.cover,
                                 ),
                               )
                             : Container(
@@ -1547,7 +1566,10 @@ class _ProductVariantSheetState extends State<ProductVariantSheet> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _totalItems > 0 ? () {
+                onPressed: (_totalItems > 0 && !_isAddingToCart) ? () {
+                  if (_isAddingToCart) return; // Extra safety check
+                  setState(() => _isAddingToCart = true);
+                  
                   List<Map<String, dynamic>> items = [];
                   if (hasOptions) {
                     _quantities.forEach((variantId, qty) {
@@ -1568,14 +1590,23 @@ class _ProductVariantSheetState extends State<ProductVariantSheet> {
                   widget.onAddToCart(items);
                 } : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary500,
+                  backgroundColor: _isAddingToCart ? AppColors.primary500.withOpacity(0.6) : AppColors.primary500,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
-                child: const Text(
-                  'Add to Cart',
-                  style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                ),
+                child: _isAddingToCart
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Text(
+                        'Add to Cart',
+                        style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
               ),
             ),
             const SizedBox(height: 12),

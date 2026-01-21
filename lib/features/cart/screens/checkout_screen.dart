@@ -22,7 +22,14 @@ class CheckoutScreen extends StatefulWidget {
   /// List of cart item IDs to checkout (if null, checkout all items)
   final List<int>? selectedCartItemIds;
   
-  const CheckoutScreen({super.key, this.selectedCartItemIds});
+  /// Shipping method selected from previous screen ('air' or 'sea')
+  final String shippingMethod;
+  
+  const CheckoutScreen({
+    super.key, 
+    this.selectedCartItemIds,
+    required this.shippingMethod,
+  });
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -139,6 +146,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'payment_type': 6, // PAYMENT_WHISH_MONEY - only supported method
         'is_paid': 0, // Will be updated after successful payment
         'client_notes': _notes,
+        // Shipping method - passed from shipping selection screen
+        'shipping_method': widget.shippingMethod, // 'air' or 'sea'
         // Include selected cart item IDs for partial checkout
         if (widget.selectedCartItemIds != null && widget.selectedCartItemIds!.isNotEmpty)
           'cart_item_ids': widget.selectedCartItemIds,
@@ -297,6 +306,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Shipping Method Badge (already selected)
+                  _buildShippingBadge(isDark),
+                  
+                  const SizedBox(height: 24),
+                  
                   // Delivery Address Section
                   _buildSectionHeader('Delivery Address', isDark),
                   const SizedBox(height: 12),
@@ -643,6 +657,62 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  Widget _buildShippingBadge(bool isDark) {
+    final isAir = widget.shippingMethod == 'air';
+    final color = isAir ? Colors.blue : Colors.teal;
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Text(
+            isAir ? '✈️' : '🚢',
+            style: const TextStyle(fontSize: 28),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isAir ? 'Air Freight' : 'Sea Freight',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  isAir ? 'Estimated: 7-14 days' : 'Estimated: 30-45 days',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white60 : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Change',
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildNotesField(bool isDark) {
     return Container(
       decoration: BoxDecoration(
@@ -686,10 +756,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _buildOrderSummary(List<CartItem> selectedItems, double subtotal, String currency, bool isDark) {
-    final shipping = 0.0; // Free shipping for now
     final tax = 0.0;
-    final total = subtotal + shipping + tax;
+    final total = subtotal + tax;
     final itemCount = selectedItems.length;
+    final isAir = widget.shippingMethod == 'air';
+    final methodName = isAir ? 'Air ✈️' : 'Sea 🚢';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -702,7 +773,60 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         children: [
           _buildSummaryRow('Items ($itemCount)', '$currency${subtotal.toStringAsFixed(2)}', isDark),
           const SizedBox(height: 12),
-          _buildSummaryRow('Shipping', shipping == 0 ? 'Free' : '$currency${shipping.toStringAsFixed(2)}', isDark, isGreen: shipping == 0),
+          // Shipping method selected (cost calculated after order)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Shipping Method',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.white60 : Colors.grey[600],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isAir
+                      ? Colors.blue.withOpacity(0.1)
+                      : Colors.teal.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  methodName,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isAir ? Colors.blue : Colors.teal,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Note about shipping cost
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.amber.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(Iconsax.info_circle, size: 16, color: Colors.amber[700]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Shipping cost will be shown in your order details',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.amber[800],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           if (tax > 0) ...[
             const SizedBox(height: 12),
             _buildSummaryRow('Tax', '$currency${tax.toStringAsFixed(2)}', isDark),
@@ -715,7 +839,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Total',
+                'Subtotal',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -760,7 +884,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget _buildBottomBar(double total, String currency, bool isDark) {
+  Widget _buildBottomBar(double subtotal, String currency, bool isDark) {
+    final total = subtotal; // Just product subtotal, shipping calculated after order
+    final canCheckout = !_isLoading;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -783,7 +909,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Total',
+                  'Subtotal',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.white60 : Colors.grey[600],
@@ -802,7 +928,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const SizedBox(width: 20),
             Expanded(
               child: ElevatedButton(
-                onPressed: _isLoading ? null : _placeOrder,
+                onPressed: canCheckout ? _placeOrder : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary500,
                   foregroundColor: Colors.white,

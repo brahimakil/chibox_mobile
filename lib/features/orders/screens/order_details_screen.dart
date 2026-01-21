@@ -6,8 +6,10 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/models/order_model.dart';
+import '../../../core/models/product_model.dart';
 import '../../../core/services/order_service.dart';
 import '../../../core/theme/theme.dart';
+import '../../product/screens/product_details_screen.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
   final int orderId;
@@ -566,26 +568,47 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 
   Widget _buildProductItem(OrderProduct product, String currencySymbol, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.only(bottom: 16),
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+    return GestureDetector(
+      onTap: () {
+        // Navigate to product details
+        if (product.productId > 0) {
+          // Create a minimal Product object to pass to ProductDetailsScreen
+          final minimalProduct = Product(
+            id: product.productId,
+            name: product.productName,
+            mainImage: product.displayImage ?? '',
+            price: product.price,
+            currencySymbol: currencySymbol,
+          );
+          
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ProductDetailsScreen(product: minimalProduct),
+            ),
+          );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.only(bottom: 16),
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+            ),
           ),
         ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Product Image
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: product.displayImage != null
-                ? CachedNetworkImage(
-                    imageUrl: product.displayImage!,
-                    width: 80,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Product Image
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: product.displayImage != null
+                  ? CachedNetworkImage(
+                      imageUrl: product.displayImage!,
+                      width: 80,
                     height: 80,
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(
@@ -666,13 +689,23 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                         color: isDark ? Colors.white54 : Colors.black54,
                       ),
                     ),
-                    Text(
-                      '$currencySymbol${product.total.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primary500,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          '$currencySymbol${product.total.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary500,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.arrow_forward_ios,
+                          size: 12,
+                          color: isDark ? Colors.white38 : Colors.black26,
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -680,6 +713,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -831,7 +865,50 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           ),
           const SizedBox(height: 16),
           _buildSummaryRow('Subtotal', order.subtotal, order.currencySymbol, isDark),
-          _buildSummaryRow('Shipping', order.shippingAmount, order.currencySymbol, isDark),
+          // Shipping row with method badge
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Shipping',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: order.shippingMethod == 'air'
+                          ? Colors.blue.withOpacity(0.1)
+                          : Colors.teal.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      order.shippingMethod == 'air' ? '✈️ Air' : '🚢 Sea',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: order.shippingMethod == 'air' ? Colors.blue : Colors.teal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           if (order.taxAmount > 0)
             _buildSummaryRow('Tax', order.taxAmount, order.currencySymbol, isDark),
           if (order.discountAmount > 0)

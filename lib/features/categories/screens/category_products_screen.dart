@@ -681,6 +681,10 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                             ? CachedNetworkImage(
                                                 imageUrl: ImageHelper.parse(category.mainImage),
                                                 fit: BoxFit.cover,
+                                                memCacheWidth: 128,
+                                                memCacheHeight: 128,
+                                                maxWidthDiskCache: 128,
+                                                maxHeightDiskCache: 128,
                                                 placeholder: (context, url) => Image.asset(
                                                   'assets/images/category_loadingorfailbak.png',
                                                   fit: BoxFit.cover,
@@ -727,15 +731,48 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                   else if (_isLoadingCategories)
                     SizedBox(
                       height: 120,
-                      child: Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.primary500,
-                          ),
-                        ),
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: 6,
+                        itemBuilder: (context, index) {
+                          return Container(
+                            width: 70,
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Circle placeholder
+                                Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isDark ? Colors.grey[800] : Colors.grey[300],
+                                  ),
+                                  child: ClipOval(
+                                    child: Image.asset(
+                                      'assets/images/category_loadingorfailbak.png',
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                // Text placeholder
+                                Container(
+                                  height: 10,
+                                  width: 50,
+                                  decoration: BoxDecoration(
+                                    color: isDark ? Colors.grey[800] : Colors.grey[300],
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ).animate(onPlay: (controller) => controller.repeat())
+                           .shimmer(duration: 1200.ms, color: isDark ? Colors.white10 : Colors.white54);
+                        },
                       ),
                     ),
                 ],
@@ -768,11 +805,69 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         ),
         itemCount: 6,
         itemBuilder: (context, index) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.asset(
-              'assets/images/productfailbackorskeleton_loading.png',
-              fit: BoxFit.cover,
+          return Container(
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isDark 
+                    ? Colors.white.withOpacity(0.08) 
+                    : Colors.black.withOpacity(0.06),
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Image section with aspect ratio 1:1 like ProductCard
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: Image.asset(
+                      'assets/images/productfailbackorskeleton_loading.png',
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                    ),
+                  ),
+                  // Info section skeleton
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 12,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[800] : Colors.grey[300],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            height: 12,
+                            width: 80,
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[800] : Colors.grey[300],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            height: 14,
+                            width: 60,
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[700] : Colors.grey[400],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ).animate(onPlay: (controller) => controller.repeat())
            .shimmer(duration: 1200.ms, color: isDark ? Colors.white10 : Colors.white54);

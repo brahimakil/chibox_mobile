@@ -497,6 +497,7 @@ class HomeService extends ChangeNotifier {
             randomProducts: newRandom,
             flashSales: _homeData!.flashSales,
             hotSellings: _homeData!.hotSellings,
+            oneDollarProducts: _homeData!.oneDollarProducts,
             pagination: _homeData!.pagination,
           );
           changed = true;
