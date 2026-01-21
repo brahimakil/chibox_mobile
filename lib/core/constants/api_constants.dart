@@ -91,6 +91,10 @@ class ApiConstants {
   static const String shippingGetProductStatus = '$apiPrefix-shipping/get-product-status';
   static const String shippingTriggerEstimation = '$apiPrefix-shipping/trigger-estimation';
   static const String shippingGetSettings = '$apiPrefix-shipping/get-settings';
+  
+  // Queue processor (triggers AI estimation in background)
+  static const String shippingQueueProcess = '$apiPrefix-shipping-queue/process';
+  static const String shippingQueueSecret = 'chihelo_queue_secret_2024_change_me';
 
   // ============== TIMEOUTS ==============
   static const Duration connectionTimeout = Duration(seconds: 90);

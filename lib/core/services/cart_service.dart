@@ -35,6 +35,36 @@ class CartService extends ChangeNotifier {
 
   // Debounce timer for fetchCart
   Timer? _fetchDebounce;
+  
+  // Debounce timer for queue processor (avoid calling multiple times rapidly)
+  Timer? _queueProcessorDebounce;
+
+  /// Trigger AI queue processor in background (fire-and-forget)
+  /// This processes any products waiting for AI shipping estimation
+  void _triggerQueueProcessor() {
+    // Debounce to avoid calling multiple times if user adds multiple items quickly
+    _queueProcessorDebounce?.cancel();
+    _queueProcessorDebounce = Timer(const Duration(seconds: 2), () async {
+      try {
+        debugPrint('🚀 Triggering AI queue processor...');
+        // Fire-and-forget - don't await, don't care about result
+        _api.get(
+          ApiConstants.shippingQueueProcess,
+          queryParams: {'secret': ApiConstants.shippingQueueSecret},
+        ).then((response) {
+          if (response.success) {
+            debugPrint('✅ Queue processor triggered: ${response.data}');
+          } else {
+            debugPrint('⚠️ Queue processor returned: ${response.message}');
+          }
+        }).catchError((e) {
+          debugPrint('⚠️ Queue processor error (non-blocking): $e');
+        });
+      } catch (e) {
+        debugPrint('⚠️ Failed to trigger queue processor: $e');
+      }
+    });
+  }
 
   /// Fetch cart items
   Future<void> fetchCart({bool silent = false}) async {
@@ -153,6 +183,10 @@ class CartService extends ChangeNotifier {
         debugPrint('✅ Added to cart: Product $productId');
         // Refresh cart data silently
         await fetchCart(silent: true);
+        
+        // Fire-and-forget: trigger queue processor for AI shipping estimation
+        _triggerQueueProcessor();
+        
         return true;
       } else {
         _error = response.message;
