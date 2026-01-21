@@ -8,7 +8,9 @@ import '../../../core/theme/theme.dart';
 import '../../../core/services/cart_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/navigation_provider.dart';
+import '../../../core/services/shipping_service.dart';
 import '../../../core/models/cart_model.dart';
+import '../../../core/models/shipping_model.dart';
 import '../../../shared/widgets/widgets.dart';
 import '../../../shared/widgets/guest_guard.dart';
 import '../../../core/models/product_model.dart';
@@ -31,6 +33,9 @@ class _CartScreenState extends State<CartScreen> {
   Set<int> _selectedItemIds = {};
   // Track if user manually cleared selection (to prevent auto-reselect)
   bool _userClearedSelection = false;
+  // Shipping comparison data for displaying per-item shipping costs
+  ShippingComparison? _shippingComparison;
+  bool _isLoadingShipping = false;
 
   @override
   void initState() {
@@ -39,7 +44,12 @@ class _CartScreenState extends State<CartScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Only fetch if we don't have data or if it's stale
       // But for now, let's just fetch silently to update
-      Provider.of<CartService>(context, listen: false).fetchCart(silent: true);
+      Provider.of<CartService>(context, listen: false).fetchCart(silent: true).then((_) {
+        // After cart loads, fetch shipping costs
+        if (mounted) {
+          _fetchShippingCosts();
+        }
+      });
     });
   }
 
@@ -68,10 +78,43 @@ class _CartScreenState extends State<CartScreen> {
             setState(() {
               _selectedItemIds = cartService.items.map((item) => item.id).toSet();
             });
+            // Also fetch shipping costs for display
+            _fetchShippingCosts();
           }
         });
       }
     });
+  }
+  
+  /// Fetch shipping costs for all cart items to display on each card
+  Future<void> _fetchShippingCosts() async {
+    if (!mounted) return;
+    
+    final cartService = Provider.of<CartService>(context, listen: false);
+    if (cartService.items.isEmpty) return;
+    
+    setState(() => _isLoadingShipping = true);
+    
+    try {
+      final shippingService = Provider.of<ShippingService>(context, listen: false);
+      final cartItemIds = cartService.items.map((i) => i.id).toList();
+      
+      final comparison = await shippingService.compareShippingMethods(
+        cartItemIds: cartItemIds,
+      );
+      
+      if (mounted) {
+        setState(() {
+          _shippingComparison = comparison;
+          _isLoadingShipping = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching shipping costs: $e');
+      if (mounted) {
+        setState(() => _isLoadingShipping = false);
+      }
+    }
   }
 
   void _toggleItemSelection(int itemId) {
@@ -105,6 +148,84 @@ class _CartScreenState extends State<CartScreen> {
     return cartService.items
         .where((item) => _selectedItemIds.contains(item.id))
         .fold(0.0, (sum, item) => sum + item.subtotal);
+  }
+  
+  /// Build shipping cost row for a cart item
+  /// Shows "China → Lebanon" with lowest shipping cost (sea or air)
+  Widget _buildShippingCostRow(int productId, bool isDark) {
+    if (_shippingComparison == null) {
+      if (_isLoadingShipping) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Calculating shipping...',
+                style: AppTypography.bodySmall(
+                  color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return const SizedBox.shrink();
+    }
+    
+    final shippingInfo = _shippingComparison!.getLowestCostForProduct(productId);
+    if (shippingInfo == null) return const SizedBox.shrink();
+    
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: (isDark ? AppColors.primary500 : AppColors.primary100).withOpacity(0.2),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '🇨🇳',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.arrow_forward,
+              size: 12,
+              color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '🇱🇧',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              shippingInfo.icon,
+              style: const TextStyle(fontSize: 11),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '\$${shippingInfo.cost.toStringAsFixed(2)}',
+              style: AppTypography.bodySmall(
+                color: AppColors.primary500,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _confirmDeleteItem(CartService cartService, int itemId) {
@@ -369,6 +490,8 @@ class _CartScreenState extends State<CartScreen> {
                                       ),
                                     ),
                                   ],
+                                  // Shipping cost display (China → Lebanon)
+                                  _buildShippingCostRow(item.productId, isDark),
                                   const SizedBox(height: 8),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -389,9 +512,10 @@ class _CartScreenState extends State<CartScreen> {
                                           children: [
                                             _QuantityButton(
                                               icon: Icons.remove,
-                                              onTap: () {
+                                              onTap: () async {
                                                 if (item.quantity > 1) {
-                                                  cartService.updateCartItem(item.id, item.quantity - 1);
+                                                  await cartService.updateCartItem(item.id, item.quantity - 1);
+                                                  _fetchShippingCosts(); // Refresh shipping after quantity change
                                                 } else {
                                                   _confirmDeleteItem(cartService, item.id);
                                                 }
@@ -411,7 +535,10 @@ class _CartScreenState extends State<CartScreen> {
                                             ),
                                             _QuantityButton(
                                               icon: Icons.add,
-                                              onTap: () => cartService.updateCartItem(item.id, item.quantity + 1),
+                                              onTap: () async {
+                                                await cartService.updateCartItem(item.id, item.quantity + 1);
+                                                _fetchShippingCosts(); // Refresh shipping after quantity change
+                                              },
                                             ),
                                           ],
                                         ),

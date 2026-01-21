@@ -287,6 +287,23 @@ class ShippingComparison {
       processingProductIds: const [],
     );
   }
+  
+  /// Get lowest shipping cost and method for a specific product
+  /// Returns a record with (cost, method, methodIcon)
+  ({double cost, String method, String icon})? getLowestCostForProduct(int productId) {
+    final airCost = air.getCostForProduct(productId);
+    final seaCost = sea.getCostForProduct(productId);
+    
+    if (airCost == null && seaCost == null) return null;
+    if (airCost == null) return (cost: seaCost!, method: 'sea', icon: '🚢');
+    if (seaCost == null) return (cost: airCost, method: 'air', icon: '✈️');
+    
+    if (seaCost <= airCost) {
+      return (cost: seaCost, method: 'sea', icon: '🚢');
+    } else {
+      return (cost: airCost, method: 'air', icon: '✈️');
+    }
+  }
 }
 
 /// Single method comparison data
@@ -296,6 +313,7 @@ class ShippingMethodComparison {
   final double totalCost;
   final bool allCalculated;
   final String estimatedDays;
+  final List<ShippingItemResult> items;
 
   const ShippingMethodComparison({
     required this.method,
@@ -303,9 +321,18 @@ class ShippingMethodComparison {
     required this.totalCost,
     required this.allCalculated,
     required this.estimatedDays,
+    this.items = const [],
   });
 
   factory ShippingMethodComparison.fromJson(Map<String, dynamic> json) {
+    // Parse items list
+    final itemsList = <ShippingItemResult>[];
+    if (json['items'] != null && json['items'] is List) {
+      for (final item in json['items']) {
+        itemsList.add(ShippingItemResult.fromJson(item));
+      }
+    }
+    
     return ShippingMethodComparison(
       method: json['method'] ?? 'air',
       name: json['name'] ?? 'Shipping',
@@ -314,6 +341,7 @@ class ShippingMethodComparison {
           : double.tryParse(json['total_cost']?.toString() ?? '0') ?? 0.0,
       allCalculated: json['all_calculated'] == true,
       estimatedDays: json['estimated_days'] ?? '',
+      items: itemsList,
     );
   }
 
@@ -324,7 +352,14 @@ class ShippingMethodComparison {
       totalCost: 0.0,
       allCalculated: false,
       estimatedDays: method == 'air' ? '7-14 days' : '30-45 days',
+      items: const [],
     );
+  }
+  
+  /// Get shipping cost for a specific product
+  double? getCostForProduct(int productId) {
+    final item = items.where((i) => i.productId == productId).firstOrNull;
+    return item?.totalCost;
   }
 }
 
