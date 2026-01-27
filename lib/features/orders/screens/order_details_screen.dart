@@ -10,6 +10,7 @@ import '../../../core/models/product_model.dart';
 import '../../../core/services/order_service.dart';
 import '../../../core/theme/theme.dart';
 import '../../product/screens/product_details_screen.dart';
+import '../../payments/screens/payment_webview_screen.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
   final int orderId;
@@ -79,6 +80,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               children: [
                 // Order Header Card
                 _buildOrderHeader(order, isDark),
+                
+                const SizedBox(height: 16),
+                
+                // Shipping Payment Card (Deferred Payment Feature)
+                // Shows different states: Pending Review, Ready to Pay, Paid
+                _buildShippingPaymentCard(order, isDark),
                 
                 const SizedBox(height: 16),
                 
@@ -865,7 +872,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           ),
           const SizedBox(height: 16),
           _buildSummaryRow('Subtotal', order.subtotal, order.currencySymbol, isDark),
-          // Shipping row with method badge
+          // Shipping row with method badge and payment status
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -893,6 +900,29 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
                         color: order.shippingMethod == 'air' ? Colors.blue : Colors.teal,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Shipping payment status indicator
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: order.isShippingPaid
+                          ? Colors.green.withOpacity(0.1)
+                          : (order.isShippingReadyToPay
+                              ? Colors.orange.withOpacity(0.1)
+                              : Colors.grey.withOpacity(0.1)),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      order.isShippingPaid ? '✓ Paid' : (order.isShippingReadyToPay ? 'Unpaid' : 'Pending'),
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: order.isShippingPaid
+                            ? Colors.green
+                            : (order.isShippingReadyToPay ? Colors.orange : Colors.grey),
                       ),
                     ),
                   ),
@@ -1034,6 +1064,308 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       return DateFormat('MMM dd, yyyy • hh:mm a').format(date);
     } catch (e) {
       return dateString;
+    }
+  }
+  
+  /// Build the Shipping Payment Card (Deferred Payment Feature)
+  /// Shows different states based on shipping_status:
+  /// - 0: Pending Review (Admin calculating)
+  /// - 1: Ready to Pay (User can pay now)
+  /// - 2: Paid (Completed)
+  Widget _buildShippingPaymentCard(OrderDetails order, bool isDark) {
+    // If shipping is already paid, show a simple success indicator
+    if (order.isShippingPaid) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.green.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Iconsax.tick_circle, color: Colors.green, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Shipping Paid',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)} • ${order.shippingMethodName}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.1, end: 0);
+    }
+    
+    // If shipping is pending review (Admin hasn't confirmed yet)
+    if (order.isShippingPendingReview) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.amber.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.amber.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Iconsax.clock, color: Colors.amber, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Delivery Payment Pending',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.amber.shade800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Estimated: ${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'We are verifying your shipping cost. You will be notified when ready to pay.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white60 : Colors.black45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.1, end: 0);
+    }
+    
+    // If shipping is ready to pay (Admin confirmed, user can pay)
+    if (order.isShippingReadyToPay) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.primary500.withOpacity(0.15),
+              AppColors.primary600.withOpacity(0.1),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.primary500.withOpacity(0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary500.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Iconsax.truck_fast, color: AppColors.primary500, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Delivery Ready to Pay',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${order.shippingMethodName}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.white60 : Colors.black45,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary500,
+                      ),
+                    ),
+                    Text(
+                      'Confirmed',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _initiateShippingPayment(order),
+                icon: const Icon(Iconsax.wallet_2, size: 20),
+                label: Text(
+                  'Pay Delivery ${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary500,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.1, end: 0);
+    }
+    
+    // Fallback: return empty container if no valid state
+    return const SizedBox.shrink();
+  }
+  
+  /// Initiate shipping payment flow
+  Future<void> _initiateShippingPayment(OrderDetails order) async {
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+    
+    try {
+      // Call payment initiation API
+      // The backend will detect this is a shipping payment because is_paid = 1 and shipping_status = 1
+      final orderService = context.read<OrderService>();
+      final paymentResult = await orderService.initiatePayment(order.id);
+      
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+      
+      if (paymentResult != null && paymentResult['payment_url'] != null) {
+        // Navigate to payment webview
+        final paymentUrl = paymentResult['payment_url'] as String;
+        final externalId = paymentResult['external_id'] as String? ?? '';
+        final amount = (paymentResult['amount'] as num?)?.toDouble() ?? order.shippingAmount;
+        final currency = paymentResult['currency'] as String? ?? 'USD';
+        
+        if (mounted) {
+          final result = await Navigator.push<PaymentWebViewResult>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PaymentWebViewScreen(
+                paymentUrl: paymentUrl,
+                externalId: externalId,
+                amount: amount,
+                currency: currency,
+              ),
+            ),
+          );
+          
+          // Handle result - refresh order details
+          if (result != null && result.success && mounted) {
+            // Refresh order to show updated shipping status
+            context.read<OrderService>().fetchOrderDetails(order.id);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Shipping payment successful!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          } else if (result != null && !result.success && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result.message ?? 'Payment was not completed'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+      } else {
+        // Show error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(paymentResult?['message'] ?? 'Failed to initiate payment'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+      
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 }

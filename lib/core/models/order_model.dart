@@ -48,6 +48,31 @@ class PaymentType {
   }
 }
 
+/// Shipping Status Constants (Deferred Payment - matching backend)
+class ShippingStatus {
+  static const int pendingCalculation = 0; // AI estimated, awaiting Admin confirmation
+  static const int readyToPay = 1;         // Admin confirmed price, user can pay
+  static const int paid = 2;               // Shipping fully paid
+  
+  static String getName(int status) {
+    switch (status) {
+      case pendingCalculation: return 'Pending Review';
+      case readyToPay: return 'Ready to Pay';
+      case paid: return 'Paid';
+      default: return 'Unknown';
+    }
+  }
+  
+  static String getDescription(int status) {
+    switch (status) {
+      case pendingCalculation: return 'Shipping cost is being calculated';
+      case readyToPay: return 'Shipping confirmed. Tap to pay.';
+      case paid: return 'Shipping paid';
+      default: return '';
+    }
+  }
+}
+
 /// Order Summary Model (for list view)
 class OrderSummary {
   final int id;
@@ -279,6 +304,8 @@ class OrderDetails {
   final double subtotal;
   final double shippingAmount;
   final String? shippingMethod; // 'air' or 'sea'
+  final int shippingStatus; // 0: Pending, 1: Ready to Pay, 2: Paid
+  final String? shippingPaymentId;
   final double taxAmount;
   final double discountAmount;
   final double total;
@@ -304,6 +331,8 @@ class OrderDetails {
     required this.subtotal,
     required this.shippingAmount,
     this.shippingMethod,
+    required this.shippingStatus,
+    this.shippingPaymentId,
     required this.taxAmount,
     required this.discountAmount,
     required this.total,
@@ -331,6 +360,8 @@ class OrderDetails {
       subtotal: (json['subtotal'] ?? 0).toDouble(),
       shippingAmount: (json['shipping_amount'] ?? 0).toDouble(),
       shippingMethod: json['shipping_method'],
+      shippingStatus: json['shipping_status'] ?? 0,
+      shippingPaymentId: json['shipping_payment_id'],
       taxAmount: (json['tax_amount'] ?? 0).toDouble(),
       discountAmount: (json['discount_amount'] ?? 0).toDouble(),
       total: (json['total'] ?? 0).toDouble(),
@@ -368,4 +399,19 @@ class OrderDetails {
   /// Check if order can be cancelled
   bool get canCancel =>
       statusId == OrderStatus.pending || statusId == OrderStatus.confirmed;
+  
+  /// Check if shipping payment is pending review (Admin hasn't confirmed yet)
+  bool get isShippingPendingReview => shippingStatus == ShippingStatus.pendingCalculation;
+  
+  /// Check if shipping is ready to be paid by user
+  bool get isShippingReadyToPay => shippingStatus == ShippingStatus.readyToPay;
+  
+  /// Check if shipping has been paid
+  bool get isShippingPaid => shippingStatus == ShippingStatus.paid;
+  
+  /// Get the amount user paid for products (total minus shipping)
+  double get productAmountPaid => total - shippingAmount;
+  
+  /// Get shipping status name
+  String get shippingStatusName => ShippingStatus.getName(shippingStatus);
 }

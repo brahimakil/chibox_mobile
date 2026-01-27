@@ -279,6 +279,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     
     // Get only selected items
     final selectedItems = _getSelectedItems(cartService);
+    final selectedSubtotal = _calculateSelectedSubtotal(selectedItems);
     final selectedTotal = _calculateSelectedTotal(selectedItems);
     final currency = cartData?.currencySymbol ?? '\$';
 
@@ -335,7 +336,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   // Order Summary
                   _buildSectionHeader('Order Summary', isDark),
                   const SizedBox(height: 12),
-                  _buildOrderSummary(selectedItems, selectedTotal, currency, isDark),
+                  _buildOrderSummary(selectedItems, selectedSubtotal, currency, isDark),
                   
                   const SizedBox(height: 100), // Bottom padding for button
                 ],
@@ -750,13 +751,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         .toList();
   }
 
-  /// Calculate total for selected items only
+  /// Calculate total for selected items only (subtotal + tax)
   double _calculateSelectedTotal(List<CartItem> selectedItems) {
+    return selectedItems.fold(0.0, (sum, item) => sum + item.subtotal + item.taxAmount);
+  }
+
+  /// Calculate subtotal for selected items only (without tax)
+  double _calculateSelectedSubtotal(List<CartItem> selectedItems) {
     return selectedItems.fold(0.0, (sum, item) => sum + item.subtotal);
   }
 
+  /// Calculate total tax for selected items
+  double _calculateSelectedTax(List<CartItem> selectedItems) {
+    return selectedItems.fold(0.0, (sum, item) => sum + item.taxAmount);
+  }
+
   Widget _buildOrderSummary(List<CartItem> selectedItems, double subtotal, String currency, bool isDark) {
-    final tax = 0.0;
+    final tax = _calculateSelectedTax(selectedItems);
     final total = subtotal + tax;
     final itemCount = selectedItems.length;
     final isAir = widget.shippingMethod == 'air';
@@ -804,24 +815,37 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          // Note about shipping cost
+          // Note about deferred shipping payment
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.amber.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.amber.withOpacity(0.3)),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Iconsax.info_circle, size: 16, color: Colors.amber[700]),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Shipping cost will be shown in your order details',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.amber[800],
+                Row(
+                  children: [
+                    Icon(Iconsax.info_circle, size: 18, color: Colors.amber[700]),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Pay for Delivery Later',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.amber[800],
+                      ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'You will pay for products now. Delivery cost will be confirmed by our team and you will be notified to complete the payment.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.amber[900]?.withOpacity(0.8),
                   ),
                 ),
               ],
@@ -829,7 +853,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
           if (tax > 0) ...[
             const SizedBox(height: 12),
-            _buildSummaryRow('Tax', '$currency${tax.toStringAsFixed(2)}', isDark),
+            _buildSummaryRow('Tax', '\$${tax.toStringAsFixed(2)}', isDark),
           ],
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
@@ -839,7 +863,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Subtotal',
+                'Total',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,

@@ -5,6 +5,8 @@ import 'package:iconsax/iconsax.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/cart_service.dart';
 import '../../../core/services/shipping_service.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/models/shipping_model.dart';
 import '../../../core/theme/theme.dart';
 import 'checkout_screen.dart';
@@ -64,11 +66,30 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
         setState(() {
           _comparison = comparison;
           _isLoading = false;
+          
+          // AUTO-SELECT cheapest shipping method when data is ready
+          if (!comparison.hasProcessingItems && _selectedMethod == null) {
+            final airCost = comparison.air.totalCost;
+            final seaCost = comparison.sea.totalCost;
+            
+            // Select the cheaper option
+            if (airCost <= seaCost) {
+              _selectedMethod = 'air';
+              debugPrint('✈️ Auto-selected AIR shipping (\$${airCost.toStringAsFixed(2)} vs Sea \$${seaCost.toStringAsFixed(2)})');
+            } else {
+              _selectedMethod = 'sea';
+              debugPrint('🚢 Auto-selected SEA shipping (\$${seaCost.toStringAsFixed(2)} vs Air \$${airCost.toStringAsFixed(2)})');
+            }
+          }
         });
 
         // If there are still processing items, start polling
         if (comparison.hasProcessingItems) {
           _startPolling();
+          // Trigger queue processor to process remaining items
+          if (isPolling) {
+            _triggerQueueProcessor();
+          }
         } else {
           _stopPolling();
         }
@@ -106,6 +127,29 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
     _pollingTimer = null;
     _isPolling = false;
   }
+  
+  /// Trigger AI queue processor to process remaining items
+  void _triggerQueueProcessor() {
+    if (!mounted) return;
+    debugPrint('🚀 Triggering AI queue processor from shipping selection polling...');
+    try {
+      final api = context.read<ApiService>();
+      // Fire-and-forget
+      api.get(
+        ApiConstants.shippingQueueProcess,
+        queryParams: {'secret': ApiConstants.shippingQueueSecret},
+      ).then((response) {
+        if (response.success) {
+          final data = response.data;
+          debugPrint('✅ Queue processor: processed=${data?['processed']}, remaining=${data?['remaining']}');
+        }
+      }).catchError((e) {
+        debugPrint('⚠️ Queue processor error: $e');
+      });
+    } catch (e) {
+      debugPrint('⚠️ Could not trigger queue processor: $e');
+    }
+  }
 
   void _selectMethod(String method) {
     // Don't allow selection if still processing
@@ -132,7 +176,8 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
   void _proceedToCheckout() {
     if (!_canProceedToCheckout) return;
 
-    Navigator.pushReplacement(
+    // Use push instead of pushReplacement so user can go back to shipping selection
+    Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => CheckoutScreen(
@@ -147,7 +192,8 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cartService = context.watch<CartService>();
-    final subtotal = cartService.cartData?.total ?? 0.0;
+    final subtotal = cartService.cartData?.subtotal ?? 0.0;
+    final tax = cartService.cartData?.totalTax ?? 0.0;
     final currency = cartService.items.isNotEmpty 
         ? cartService.items.first.currencySymbol 
         : '\$';
@@ -172,7 +218,7 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
           ? _buildLoadingState(isDark)
           : _error != null
               ? _buildErrorState(isDark)
-              : _buildContent(isDark, subtotal, currency),
+              : _buildContent(isDark, subtotal, tax, currency),
     );
   }
 
@@ -243,13 +289,13 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
     );
   }
 
-  Widget _buildContent(bool isDark, double subtotal, String currency) {
+  Widget _buildContent(bool isDark, double subtotal, double tax, String currency) {
     final airCost = _comparison?.air.totalCost ?? 0.0;
     final seaCost = _comparison?.sea.totalCost ?? 0.0;
-    final total = subtotal + _selectedShippingCost;
+    final total = subtotal + tax + _selectedShippingCost;
     final isProcessing = _comparison?.hasProcessingItems == true;
 
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -359,7 +405,7 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
             color: Colors.teal,
           ).animate(delay: 300.ms).fadeIn().slideX(begin: -0.1, end: 0),
           
-          const Spacer(),
+          const SizedBox(height: 32),
           
           // Order Summary with CALCULATED totals
           Container(
@@ -393,6 +439,30 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
                     ),
                   ],
                 ),
+                // Tax row (only show if there's tax)
+                if (tax > 0) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Tax',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: isDark ? Colors.white60 : Colors.grey[600],
+                        ),
+                      ),
+                      Text(
+                        '\$${tax.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

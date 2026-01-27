@@ -222,6 +222,31 @@ class OrderService extends ChangeNotifier {
     return false;
   }
 
+  /// Initiate payment for an order (Products or Shipping based on order state)
+  /// Returns payment data with 'payment_url' if successful
+  Future<Map<String, dynamic>?> initiatePayment(int orderId) async {
+    try {
+      debugPrint('💳 Initiating payment for order: $orderId');
+      
+      final response = await _apiService.post(
+        ApiConstants.paymentInitiate,
+        body: {'order_id': orderId},
+      );
+
+      if (response.success && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        debugPrint('✅ Payment initiated: ${data['payment_url']}');
+        return data;
+      } else {
+        debugPrint('❌ Payment initiation failed: ${response.message}');
+        return {'message': response.message ?? 'Failed to initiate payment'};
+      }
+    } catch (e) {
+      debugPrint('❌ Payment initiation exception: $e');
+      return {'message': 'Error: $e'};
+    }
+  }
+
   /// Clear selected order
   void clearSelectedOrder() {
     _selectedOrder = null;

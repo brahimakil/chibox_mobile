@@ -86,6 +86,17 @@ class ShippingItemResult {
   final double? totalCost;
   final bool isAiProcessing;
   final int? cartItemId;
+  
+  // Debug/Display data
+  final double? weightKg;
+  final double? lengthCm;
+  final double? widthCm;
+  final double? heightCm;
+  final double? confidenceScore;
+  final bool? isAiDetected;
+  final double? pricePerKg; // For air shipping
+  final double? pricePerCbm; // For sea shipping
+  final double? cbm; // Cubic meters
 
   const ShippingItemResult({
     required this.productId,
@@ -95,9 +106,66 @@ class ShippingItemResult {
     this.totalCost,
     this.isAiProcessing = false,
     this.cartItemId,
+    this.weightKg,
+    this.lengthCm,
+    this.widthCm,
+    this.heightCm,
+    this.confidenceScore,
+    this.isAiDetected,
+    this.pricePerKg,
+    this.pricePerCbm,
+    this.cbm,
   });
 
   factory ShippingItemResult.fromJson(Map<String, dynamic> json) {
+    // Parse dimensions - may be nested in 'dimensions' object or at top level
+    // API sends in meters, convert to cm for display
+    final dimensions = json['dimensions'] as Map<String, dynamic>?;
+    
+    double? lengthCm, widthCm, heightCm, weightKg;
+    
+    // Try nested dimensions object first, then top level
+    if (dimensions != null) {
+      if (dimensions['length_m'] != null) {
+        lengthCm = _parseDouble(dimensions['length_m'])! * 100; // m to cm
+      }
+      if (dimensions['width_m'] != null) {
+        widthCm = _parseDouble(dimensions['width_m'])! * 100;
+      }
+      if (dimensions['height_m'] != null) {
+        heightCm = _parseDouble(dimensions['height_m'])! * 100;
+      }
+      if (dimensions['weight_kg'] != null) {
+        weightKg = _parseDouble(dimensions['weight_kg']);
+      }
+    }
+    
+    // Fallback to top-level values
+    if (lengthCm == null) {
+      if (json['length_m'] != null) {
+        lengthCm = _parseDouble(json['length_m'])! * 100;
+      } else if (json['length_cm'] != null) {
+        lengthCm = _parseDouble(json['length_cm']);
+      }
+    }
+    if (widthCm == null) {
+      if (json['width_m'] != null) {
+        widthCm = _parseDouble(json['width_m'])! * 100;
+      } else if (json['width_cm'] != null) {
+        widthCm = _parseDouble(json['width_cm']);
+      }
+    }
+    if (heightCm == null) {
+      if (json['height_m'] != null) {
+        heightCm = _parseDouble(json['height_m'])! * 100;
+      } else if (json['height_cm'] != null) {
+        heightCm = _parseDouble(json['height_cm']);
+      }
+    }
+    if (weightKg == null) {
+      weightKg = _parseDouble(json['weight_kg']);
+    }
+    
     return ShippingItemResult(
       productId: json['product_id'] is int
           ? json['product_id']
@@ -106,23 +174,42 @@ class ShippingItemResult {
           ? json['quantity']
           : int.parse(json['quantity'].toString()),
       status: json['status'] ?? 'pending_estimation',
-      unitCost: json['unit_cost'] != null
-          ? (json['unit_cost'] is num
-              ? (json['unit_cost'] as num).toDouble()
-              : double.tryParse(json['unit_cost'].toString()))
-          : null,
-      totalCost: json['total_cost'] != null
-          ? (json['total_cost'] is num
-              ? (json['total_cost'] as num).toDouble()
-              : double.tryParse(json['total_cost'].toString()))
-          : null,
+      unitCost: _parseDouble(json['unit_cost']),
+      totalCost: _parseDouble(json['total_cost']),
       isAiProcessing: json['ai_processing'] == 1 || json['ai_processing'] == true,
       cartItemId: json['cart_item_id'],
+      weightKg: weightKg, // Use parsed value from dimensions object
+      lengthCm: lengthCm,
+      widthCm: widthCm,
+      heightCm: heightCm,
+      confidenceScore: _parseDouble(json['confidence_score']),
+      // AI detected if: explicit flag, source=ai, OR has a confidence score (AI estimation)
+      isAiDetected: json['is_ai_detected'] == true || 
+                    json['is_ai_detected'] == 1 || 
+                    json['source'] == 'ai' ||
+                    (_parseDouble(json['confidence_score']) != null && _parseDouble(json['confidence_score'])! > 0),
+      pricePerKg: _parseDouble(json['price_per_kg']),
+      pricePerCbm: _parseDouble(json['price_per_cbm']),
+      cbm: _parseDouble(json['cbm']),
     );
+  }
+  
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
   }
 
   bool get isCalculated => status == 'calculated';
   bool get isPending => status == 'pending_estimation';
+  
+  /// Get dimensions as a formatted string (LxWxH cm)
+  String? get dimensionsString {
+    if (lengthCm != null && widthCm != null && heightCm != null) {
+      return '${lengthCm!.toStringAsFixed(1)}×${widthCm!.toStringAsFixed(1)}×${heightCm!.toStringAsFixed(1)} cm';
+    }
+    return null;
+  }
 }
 
 /// Summary of shipping calculation for cart
@@ -291,13 +378,23 @@ class ShippingComparison {
   /// Check if a specific product is currently being processed by AI
   bool isProductProcessing(int productId) {
     // Check if in the processing list
-    if (processingProductIds.contains(productId)) return true;
+    if (processingProductIds.contains(productId)) {
+      debugPrint('   🔄 Product $productId in processingProductIds list');
+      return true;
+    }
     
     // Also check item-level ai_processing flag
     final airItem = air.items.where((i) => i.productId == productId).firstOrNull;
     final seaItem = sea.items.where((i) => i.productId == productId).firstOrNull;
     
-    return (airItem?.isAiProcessing ?? false) || (seaItem?.isAiProcessing ?? false);
+    final airProcessing = airItem?.isAiProcessing ?? false;
+    final seaProcessing = seaItem?.isAiProcessing ?? false;
+    
+    if (airProcessing || seaProcessing) {
+      debugPrint('   🔄 Product $productId: airProcessing=$airProcessing, seaProcessing=$seaProcessing');
+    }
+    
+    return airProcessing || seaProcessing;
   }
   
   /// Get lowest shipping cost and method for a specific product
@@ -315,6 +412,79 @@ class ShippingComparison {
     } else {
       return (cost: airCost, method: 'air', icon: '✈️');
     }
+  }
+  
+  /// Get detailed shipping debug info for a product
+  /// Returns all the shipping data for debugging display
+  ShippingDebugInfo? getDebugInfoForProduct(int productId) {
+    final airItem = air.items.where((i) => i.productId == productId).firstOrNull;
+    final seaItem = sea.items.where((i) => i.productId == productId).firstOrNull;
+    
+    // Use air item data as primary source (both should have same dimensions/weight)
+    final item = airItem ?? seaItem;
+    if (item == null) return null;
+    
+    return ShippingDebugInfo(
+      weightKg: item.weightKg,
+      lengthCm: item.lengthCm,
+      widthCm: item.widthCm,
+      heightCm: item.heightCm,
+      isAiDetected: item.isAiDetected ?? false,
+      confidenceScore: item.confidenceScore,
+      airPricePerKg: airItem?.pricePerKg,
+      airCost: airItem?.totalCost,
+      seaPricePerCbm: seaItem?.pricePerCbm,
+      seaCost: seaItem?.totalCost,
+      cbm: item.cbm,
+      isProcessing: isProductProcessing(productId),
+    );
+  }
+}
+
+/// Debug info for shipping display on cart cards
+class ShippingDebugInfo {
+  final double? weightKg;
+  final double? lengthCm;
+  final double? widthCm;
+  final double? heightCm;
+  final bool isAiDetected;
+  final double? confidenceScore;
+  final double? airPricePerKg;
+  final double? airCost;
+  final double? seaPricePerCbm;
+  final double? seaCost;
+  final double? cbm;
+  final bool isProcessing;
+  
+  const ShippingDebugInfo({
+    this.weightKg,
+    this.lengthCm,
+    this.widthCm,
+    this.heightCm,
+    this.isAiDetected = false,
+    this.confidenceScore,
+    this.airPricePerKg,
+    this.airCost,
+    this.seaPricePerCbm,
+    this.seaCost,
+    this.cbm,
+    this.isProcessing = false,
+  });
+  
+  /// Get dimensions as a formatted string (LxWxH cm)
+  String? get dimensionsString {
+    if (lengthCm != null && widthCm != null && heightCm != null) {
+      return '${lengthCm!.toStringAsFixed(1)}×${widthCm!.toStringAsFixed(1)}×${heightCm!.toStringAsFixed(1)}';
+    }
+    return null;
+  }
+  
+  /// Get confidence as percentage string
+  String? get confidenceString {
+    if (confidenceScore != null) {
+      return '${(confidenceScore! * 100).toStringAsFixed(0)}%';
+    }
+    return null;
   }
 }
 

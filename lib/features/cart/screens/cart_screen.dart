@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:lottie/lottie.dart';
@@ -9,6 +10,8 @@ import '../../../core/services/cart_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/navigation_provider.dart';
 import '../../../core/services/shipping_service.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/models/cart_model.dart';
 import '../../../core/models/shipping_model.dart';
 import '../../../shared/widgets/widgets.dart';
@@ -31,11 +34,16 @@ class _CartScreenState extends State<CartScreen> {
   Key _animationKey = UniqueKey();
   // Selected cart item IDs for checkout
   Set<int> _selectedItemIds = {};
+  // Track known items to detect new additions
+  Set<int> _knownItemIds = {};
   // Track if user manually cleared selection (to prevent auto-reselect)
   bool _userClearedSelection = false;
   // Shipping comparison data for displaying per-item shipping costs
   ShippingComparison? _shippingComparison;
   bool _isLoadingShipping = false;
+  // Polling for AI processing updates
+  Timer? _pollingTimer;
+  bool _isPolling = false;
 
   @override
   void initState() {
@@ -86,34 +94,125 @@ class _CartScreenState extends State<CartScreen> {
     });
   }
   
+  @override
+  void dispose() {
+    _stopPolling();
+    super.dispose();
+  }
+  
   /// Fetch shipping costs for all cart items to display on each card
-  Future<void> _fetchShippingCosts() async {
+  Future<void> _fetchShippingCosts({bool isPolling = false}) async {
+    debugPrint('📦 _fetchShippingCosts called, mounted=$mounted, isPolling=$isPolling');
     if (!mounted) return;
     
     final cartService = Provider.of<CartService>(context, listen: false);
+    debugPrint('   Cart items: ${cartService.items.length}');
     if (cartService.items.isEmpty) return;
     
-    setState(() => _isLoadingShipping = true);
+    // Only show loading indicator for initial fetch, not polling
+    if (!isPolling) {
+      setState(() => _isLoadingShipping = true);
+    }
     
     try {
       final shippingService = Provider.of<ShippingService>(context, listen: false);
       final cartItemIds = cartService.items.map((i) => i.id).toList();
+      debugPrint('   Fetching shipping for cart item IDs: $cartItemIds');
       
       final comparison = await shippingService.compareShippingMethods(
         cartItemIds: cartItemIds,
       );
       
+      debugPrint('   ✅ Got comparison, air items: ${comparison.air.items.length}, sea items: ${comparison.sea.items.length}');
+      debugPrint('   📊 hasProcessingItems: ${comparison.hasProcessingItems}, processingIds: ${comparison.processingProductIds}');
+      
+      // Log individual item processing status
+      for (final item in comparison.air.items) {
+        debugPrint('   📦 Air item ${item.productId}: isAiProcessing=${item.isAiProcessing}, status=${item.status}');
+      }
+      
       if (mounted) {
+        debugPrint('   🔄 Calling setState with comparison');
         setState(() {
           _shippingComparison = comparison;
           _isLoadingShipping = false;
         });
+        debugPrint('   ✅ setState completed, _shippingComparison is now ${_shippingComparison != null}');
+        
+        // Start or stop polling based on processing status
+        if (comparison.hasProcessingItems) {
+          _startPolling();
+          // ALSO trigger queue processor to process remaining items!
+          if (isPolling) {
+            _triggerQueueProcessor();
+          }
+        } else {
+          // Don't trigger refresh here - data is already fresh from this fetch
+          _stopPolling(refresh: false);
+        }
       }
     } catch (e) {
       debugPrint('❌ Error fetching shipping costs: $e');
       if (mounted) {
         setState(() => _isLoadingShipping = false);
       }
+    }
+  }
+  
+  /// Start polling for shipping cost updates when AI is processing
+  void _startPolling() {
+    if (_isPolling) return;
+    _isPolling = true;
+    debugPrint('🔄 Starting shipping cost polling in cart...');
+    
+    // Poll every 3 seconds
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (mounted && _shippingComparison?.hasProcessingItems == true) {
+        debugPrint('🔄 Polling for shipping costs update...');
+        _fetchShippingCosts(isPolling: true);
+      } else {
+        // Polling done - force final refresh to show updated data
+        _stopPolling(refresh: true);
+      }
+    });
+  }
+  
+  /// Stop polling
+  void _stopPolling({bool refresh = false}) {
+    if (!_isPolling && !refresh) return;
+    debugPrint('✅ Stopping shipping cost polling in cart');
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+    _isPolling = false;
+    
+    // Force a final refresh to ensure UI shows latest data
+    if (refresh && mounted) {
+      debugPrint('🔄 Final refresh after polling stopped');
+      _fetchShippingCosts();
+    }
+  }
+  
+  /// Trigger AI queue processor to process remaining items
+  /// This is called during polling when there are still processing items
+  void _triggerQueueProcessor() {
+    if (!mounted) return;
+    debugPrint('🚀 Triggering AI queue processor from cart polling...');
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      // Fire-and-forget - don't await, don't block polling
+      api.get(
+        ApiConstants.shippingQueueProcess,
+        queryParams: {'secret': ApiConstants.shippingQueueSecret},
+      ).then((response) {
+        if (response.success) {
+          final data = response.data;
+          debugPrint('✅ Queue processor: processed=${data?['processed']}, remaining=${data?['remaining']}');
+        }
+      }).catchError((e) {
+        debugPrint('⚠️ Queue processor error: $e');
+      });
+    } catch (e) {
+      debugPrint('⚠️ Could not trigger queue processor: $e');
     }
   }
 
@@ -147,13 +246,26 @@ class _CartScreenState extends State<CartScreen> {
   double _calculateSelectedTotal(CartService cartService) {
     return cartService.items
         .where((item) => _selectedItemIds.contains(item.id))
+        .fold(0.0, (sum, item) => sum + item.subtotal + item.taxAmount);
+  }
+
+  double _calculateSelectedSubtotal(CartService cartService) {
+    return cartService.items
+        .where((item) => _selectedItemIds.contains(item.id))
         .fold(0.0, (sum, item) => sum + item.subtotal);
+  }
+
+  double _calculateSelectedTax(CartService cartService) {
+    return cartService.items
+        .where((item) => _selectedItemIds.contains(item.id))
+        .fold(0.0, (sum, item) => sum + item.taxAmount);
   }
   
   /// Build shipping cost row for a cart item
-  /// Shows "China → Lebanon" with lowest shipping cost (sea or air)
-  /// Shows "AI Processing..." if estimation is in progress
+  /// Shows debug info: weight, dimensions, AI confidence, prices
   Widget _buildShippingCostRow(int productId, bool isDark) {
+    debugPrint('🏗️ Building shipping row for product $productId, comparison=${_shippingComparison != null}, loading=$_isLoadingShipping');
+    
     if (_shippingComparison == null) {
       if (_isLoadingShipping) {
         return Padding(
@@ -179,13 +291,64 @@ class _CartScreenState extends State<CartScreen> {
           ),
         );
       }
+      debugPrint('   ❌ No shipping comparison and not loading');
       return const SizedBox.shrink();
     }
     
-    // Check if AI is still processing this product
-    final isProcessing = _shippingComparison!.isProductProcessing(productId);
+    // Get debug info for this product
+    final debugInfo = _shippingComparison!.getDebugInfoForProduct(productId);
     
-    if (isProcessing) {
+    debugPrint('   📊 Debug info for $productId: isProcessing=${debugInfo?.isProcessing}, weight=${debugInfo?.weightKg}');
+    
+    // If debugInfo is null, the product wasn't in the comparison response
+    // This can happen if the cart was updated but shipping wasn't refreshed
+    // Auto-refresh shipping data
+    if (debugInfo == null) {
+      debugPrint('   ⚠️ No debug info for $productId - auto-refreshing shipping');
+      // Schedule a refresh if not already loading
+      if (!_isLoadingShipping) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_isLoadingShipping) {
+            _fetchShippingCosts();
+          }
+        });
+      }
+      // Show loading indicator while auto-refreshing
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.neutral500.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Loading shipping...',
+                style: AppTypography.bodySmall(
+                  color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
+                ).copyWith(fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // Check if AI is still processing (only if we have debug info AND it's actually processing)
+    if (debugInfo.isProcessing) {
+      debugPrint('   ⏳ Showing AI Processing for $productId (isProcessing=${debugInfo.isProcessing})');
       return Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Container(
@@ -223,49 +386,105 @@ class _CartScreenState extends State<CartScreen> {
       );
     }
     
-    final shippingInfo = _shippingComparison!.getLowestCostForProduct(productId);
-    if (shippingInfo == null) return const SizedBox.shrink();
-    
+    // Build the debug info display
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: (isDark ? AppColors.primary500 : AppColors.primary100).withOpacity(0.2),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '🇨🇳',
-              style: const TextStyle(fontSize: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Main shipping row with lowest cost
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: (isDark ? AppColors.primary500 : AppColors.primary100).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(6),
             ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.arrow_forward,
-              size: 12,
-              color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('🇨🇳', style: const TextStyle(fontSize: 12)),
+                const SizedBox(width: 4),
+                Icon(Icons.arrow_forward, size: 12,
+                  color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary),
+                const SizedBox(width: 4),
+                Text('🇱🇧', style: const TextStyle(fontSize: 12)),
+                const SizedBox(width: 6),
+                // Show cheapest option
+                if (debugInfo.airCost != null && debugInfo.seaCost != null) ...[
+                  Text(
+                    debugInfo.seaCost! <= debugInfo.airCost! ? '🚢' : '✈️',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '\$${(debugInfo.seaCost! <= debugInfo.airCost! ? debugInfo.seaCost! : debugInfo.airCost!).toStringAsFixed(2)}',
+                    style: AppTypography.bodySmall(
+                      color: AppColors.primary500,
+                    ).copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ] else if (debugInfo.airCost != null) ...[
+                  Text('✈️', style: const TextStyle(fontSize: 11)),
+                  const SizedBox(width: 4),
+                  Text('\$${debugInfo.airCost!.toStringAsFixed(2)}',
+                    style: AppTypography.bodySmall(color: AppColors.primary500).copyWith(fontWeight: FontWeight.w600)),
+                ] else if (debugInfo.seaCost != null) ...[
+                  Text('🚢', style: const TextStyle(fontSize: 11)),
+                  const SizedBox(width: 4),
+                  Text('\$${debugInfo.seaCost!.toStringAsFixed(2)}',
+                    style: AppTypography.bodySmall(color: AppColors.primary500).copyWith(fontWeight: FontWeight.w600)),
+                ],
+              ],
             ),
-            const SizedBox(width: 4),
-            Text(
-              '🇱🇧',
-              style: const TextStyle(fontSize: 12),
+          ),
+          
+          // Debug info row
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: (isDark ? Colors.grey[800] : Colors.grey[200])!.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(4),
             ),
-            const SizedBox(width: 6),
-            Text(
-              shippingInfo.icon,
-              style: const TextStyle(fontSize: 11),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 2,
+              children: [
+                // Weight
+                if (debugInfo.weightKg != null)
+                  _buildDebugChip('⚖️ ${debugInfo.weightKg!.toStringAsFixed(2)}kg', isDark),
+                // Dimensions
+                if (debugInfo.dimensionsString != null)
+                  _buildDebugChip('📐 ${debugInfo.dimensionsString}cm', isDark),
+                // AI indicator with confidence
+                if (debugInfo.isAiDetected)
+                  _buildDebugChip(
+                    '🤖 AI${debugInfo.confidenceString != null ? ' ${debugInfo.confidenceString}' : ''}',
+                    isDark,
+                    color: AppColors.info,
+                  )
+                else
+                  _buildDebugChip('📊 Manual', isDark, color: AppColors.success),
+                // Air price per kg
+                if (debugInfo.airPricePerKg != null)
+                  _buildDebugChip('✈️ \$${debugInfo.airPricePerKg!.toStringAsFixed(2)}/kg', isDark),
+                // Sea price per CBM
+                if (debugInfo.seaPricePerCbm != null && debugInfo.cbm != null)
+                  _buildDebugChip('🚢 \$${debugInfo.seaPricePerCbm!.toStringAsFixed(0)}/cbm', isDark),
+              ],
             ),
-            const SizedBox(width: 4),
-            Text(
-              '\$${shippingInfo.cost.toStringAsFixed(2)}',
-              style: AppTypography.bodySmall(
-                color: AppColors.primary500,
-              ).copyWith(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildDebugChip(String text, bool isDark, {Color? color}) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 9,
+        color: color ?? (isDark ? Colors.grey[400] : Colors.grey[600]),
+        fontWeight: FontWeight.w500,
       ),
     );
   }
@@ -389,16 +608,45 @@ class _CartScreenState extends State<CartScreen> {
             );
           }
 
-          // Ensure selected items are synced when cart updates (only on first load)
-          // Don't auto-select if user manually cleared selection
-          if (_selectedItemIds.isEmpty && cartService.items.isNotEmpty && !_userClearedSelection) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                setState(() {
-                  _selectedItemIds = cartService.items.map((item) => item.id).toSet();
-                });
-              }
-            });
+          // Auto-select newly added items
+          final currentItemIds = cartService.items.map((item) => item.id).toSet();
+          
+          // Check for new items (IDs present now that weren't known before)
+          if (currentItemIds.length > _knownItemIds.length) {
+            final newItems = currentItemIds.difference(_knownItemIds);
+            
+            if (newItems.isNotEmpty) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    debugPrint('✨ Auto-selecting ${newItems.length} new items');
+                    _selectedItemIds.addAll(newItems);
+                    _knownItemIds = currentItemIds;
+                    // If we are auto-selecting new items, we shouldn't block future auto-selections
+                    // just because the user cleared the cart previously
+                    if (_selectedItemIds.isNotEmpty) {
+                      _userClearedSelection = false;
+                    }
+                  });
+                }
+              });
+            }
+          } 
+          // Check for removed items or initial sync
+          else if (currentItemIds.length != _knownItemIds.length || _knownItemIds.isEmpty && currentItemIds.isNotEmpty) {
+             WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                   setState(() {
+                      _knownItemIds = currentItemIds;
+                      
+                      // Initial load safety: if we have items but nothing known and nothing selected,
+                      // and user hasn't explicitly cleared, select all (fallback for first load)
+                      if (_selectedItemIds.isEmpty && !_userClearedSelection && currentItemIds.isNotEmpty) {
+                         _selectedItemIds.addAll(currentItemIds);
+                      }
+                   });
+                }
+             });
           }
           // Remove any selected IDs that no longer exist in cart
           _selectedItemIds.removeWhere((id) => !cartService.items.any((item) => item.id == id));
@@ -615,6 +863,47 @@ class _CartScreenState extends State<CartScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Subtotal row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Subtotal (${_selectedItemIds.length} items)',
+                            style: AppTypography.bodyMedium(
+                              color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
+                            ),
+                          ),
+                          Text(
+                            '${cartService.cartData?.currencySymbol ?? '\$'}${_calculateSelectedSubtotal(cartService).toStringAsFixed(2)}',
+                            style: AppTypography.bodyMedium(
+                              color: isDark ? DarkThemeColors.text : LightThemeColors.text,
+                            ),
+                          ),
+                        ],
+                      ),
+                      // Tax row (only show if there's tax)
+                      if (_calculateSelectedTax(cartService) > 0) ...[
+                        AppSpacing.verticalSm,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Tax',
+                              style: AppTypography.bodyMedium(
+                                color: isDark ? DarkThemeColors.textSecondary : LightThemeColors.textSecondary,
+                              ),
+                            ),
+                            Text(
+                              '\$${_calculateSelectedTax(cartService).toStringAsFixed(2)}',
+                              style: AppTypography.bodyMedium(
+                                color: isDark ? DarkThemeColors.text : LightThemeColors.text,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      AppSpacing.verticalSm,
+                      // Total row
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -622,7 +911,7 @@ class _CartScreenState extends State<CartScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Total (${_selectedItemIds.length} items)',
+                                'Total',
                                 style: AppTypography.headingSmall(
                                   color: isDark ? DarkThemeColors.text : LightThemeColors.text,
                                 ),
@@ -659,7 +948,13 @@ class _CartScreenState extends State<CartScreen> {
                               MaterialPageRoute(
                                 builder: (_) => ShippingSelectionScreen(selectedCartItemIds: _selectedItemIds.toList()),
                               ),
-                            );
+                            ).then((_) {
+                              // Refresh shipping costs when returning from checkout
+                              // This updates the debug info on cart cards
+                              if (mounted) {
+                                _fetchShippingCosts();
+                              }
+                            });
                           }
                         },
                       ),

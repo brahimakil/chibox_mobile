@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:provider/provider.dart';
 import 'package:carousel_slider/carousel_slider.dart';
@@ -123,6 +124,14 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         _scrollOffset = offset;
       });
     }
+
+    // Auto paginate when scrolled near bottom
+    if (_scrollController.position.pixels >= 
+        _scrollController.position.maxScrollExtent - 500) {
+      if (_hasMoreSimilar && !_isLoadingMoreSimilar && !_isLoadingSimilar) {
+        _fetchSimilarProducts(loadMore: true);
+      }
+    }
   }
   
   // Track if initial similar products fetch has been started (to prevent duplicates)
@@ -202,7 +211,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           } else {
             _similarProducts = similar;
           }
-          _hasMoreSimilar = hasNext && similar.isNotEmpty;
+          _hasMoreSimilar = hasNext;
           _isLoadingSimilar = false;
           _isLoadingMoreSimilar = false;
         });
@@ -419,6 +428,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   }
 
   void _showVariantSheet() {
+    debugPrint('🔔 _showVariantSheet called - product options: ${_product.options?.length ?? 'null'}, variants: ${_product.variants?.length ?? 'null'}');
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -979,116 +989,114 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         ),
         const SizedBox(height: 12),
         
-        // Products List
+        // Products Grid - MasonryGridView exactly like home page All Products
         if (_isLoadingSimilar && productsToShow.isEmpty)
-          SizedBox(
-            height: 220,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: 4,
-              itemBuilder: (context, index) => Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: _buildSimilarProductSkeleton(isDark),
-              ),
-            ),
+          MasonryGridView.count(
+            crossAxisCount: 2,
+            mainAxisSpacing: 4,
+            crossAxisSpacing: 4,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: 4,
+            itemBuilder: (context, index) => _buildPaginationSkeleton(isDark, index),
           )
         else
-          NotificationListener<ScrollNotification>(
-            onNotification: (scrollInfo) {
-              if (scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 100) {
-                _fetchSimilarProducts(loadMore: true);
-              }
-              return false;
-            },
-            child: SizedBox(
-              height: 220,
-              child: ListView.builder(
-                controller: _similarScrollController,
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                itemCount: productsToShow.length + (_isLoadingMoreSimilar || _hasMoreSimilar ? 1 : 0),
+          Column(
+            children: [
+              MasonryGridView.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: 4,
+                crossAxisSpacing: 4,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: productsToShow.length + (_isLoadingMoreSimilar ? 2 : 0),
                 itemBuilder: (context, index) {
-                  // Show loading skeleton at the end
+                  // Show skeleton at end when loading more
                   if (index >= productsToShow.length) {
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: _buildSimilarProductSkeleton(isDark),
-                    );
+                    return _buildPaginationSkeleton(isDark, index);
                   }
-                  
                   final product = productsToShow[index];
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: _buildSimilarProductCard(product, isDark),
+                  return ProductCard.fromProduct(
+                    product,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ProductDetailsScreen(product: product),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
-            ),
+              // Auto-loading trigger space at bottom
+               if (_hasMoreSimilar && productsToShow.isNotEmpty && !_isLoadingMoreSimilar)
+                 const SizedBox(height: 50),
+            ],
           ),
         const SizedBox(height: 24),
       ],
     );
   }
   
-  Widget _buildSimilarProductSkeleton(bool isDark) {
-    final baseColor = isDark ? AppColors.shimmerBaseDark : AppColors.shimmerBase;
-    final highlightColor = isDark ? AppColors.shimmerHighlightDark : AppColors.shimmerHighlight;
+  /// Pagination skeleton with fallback image - exactly like home page
+  Widget _buildPaginationSkeleton(bool isDark, int index) {
+    // Height variation for masonry effect
+    final heights = [200.0, 240.0, 220.0, 260.0, 180.0, 230.0, 250.0, 210.0];
+    final randomHeight = heights[index % heights.length];
     
     return Container(
-      width: 140,
+      height: randomHeight,
       decoration: BoxDecoration(
-        color: isDark ? DarkThemeColors.surface : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: isDark ? DarkThemeColors.surface : LightThemeColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark 
+              ? AppColors.neutral800.withOpacity(0.5) 
+              : AppColors.neutral200.withOpacity(0.5),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Image skeleton with shimmer
-          Container(
-            height: 140,
-            decoration: BoxDecoration(
-              color: baseColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+          // Image placeholder with fallback image
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.neutral800 : AppColors.neutral100,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
+              ),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
+                child: Image.asset(
+                  'assets/images/productfailbackorskeleton_loading.png',
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                ),
+              ),
             ),
           ),
+          // Text placeholder
           Padding(
             padding: const EdgeInsets.all(8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title skeleton
                 Container(
                   height: 12,
-                  width: 100,
+                  width: double.infinity,
                   decoration: BoxDecoration(
-                    color: baseColor,
+                    color: isDark ? AppColors.neutral700 : AppColors.neutral200,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-                const SizedBox(height: 8),
-                // Second line
+                const SizedBox(height: 6),
                 Container(
-                  height: 12,
-                  width: 80,
-                  decoration: BoxDecoration(
-                    color: baseColor,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Price skeleton
-                Container(
-                  height: 14,
+                  height: 10,
                   width: 60,
                   decoration: BoxDecoration(
-                    color: baseColor,
+                    color: isDark ? AppColors.neutral700 : AppColors.neutral200,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -1097,12 +1105,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           ),
         ],
       ),
-    )
-        .animate(onPlay: (c) => c.repeat())
-        .shimmer(
-          duration: 1500.ms,
-          color: highlightColor.withOpacity(isDark ? 0.15 : 0.4),
-        );
+    );
   }
   
   Widget _buildSimilarProductCard(Product product, bool isDark) {
@@ -1239,6 +1242,233 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         ),
       ),
     );
+  }
+
+  /// Horizontal card for vertical list layout
+  Widget _buildSimilarProductCardHorizontal(Product product, bool isDark) {
+    final baseColor = isDark ? AppColors.shimmerBaseDark : AppColors.shimmerBase;
+    final highlightColor = isDark ? AppColors.shimmerHighlightDark : AppColors.shimmerHighlight;
+    
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProductDetailsScreen(product: product),
+          ),
+        );
+      },
+      child: Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: isDark ? DarkThemeColors.surface : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Image
+            ClipRRect(
+              borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+              child: Stack(
+                children: [
+                  CachedNetworkImage(
+                    imageUrl: product.mainImage,
+                    height: 120,
+                    width: 120,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
+                      height: 120,
+                      width: 120,
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                      ),
+                    )
+                        .animate(onPlay: (c) => c.repeat())
+                        .shimmer(
+                          duration: 1500.ms,
+                          color: highlightColor.withOpacity(isDark ? 0.15 : 0.4),
+                        ),
+                    errorWidget: (context, url, error) => Container(
+                      height: 120,
+                      width: 120,
+                      color: isDark ? Colors.grey[800] : Colors.grey[200],
+                      child: const Center(
+                        child: Icon(Icons.broken_image, color: Colors.grey, size: 32),
+                      ),
+                    ),
+                  ),
+                  // Discount badge
+                  if (product.discountPercentage != null && product.discountPercentage! > 0)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '-${product.discountPercentage!.toInt()}%',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Product Info
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Product Name
+                    Text(
+                      product.displayName ?? product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.white : Colors.black87,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Price Row
+                    Row(
+                      children: [
+                        Text(
+                          '${product.currencySymbol}${product.price.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary500,
+                          ),
+                        ),
+                        if (product.originalPrice != null && product.originalPrice! > product.price) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            '${product.currencySymbol}${product.originalPrice!.toStringAsFixed(0)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[500],
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Arrow indicator
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Icon(
+                Icons.chevron_right,
+                color: isDark ? Colors.white38 : Colors.black26,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Horizontal skeleton for vertical list layout
+  Widget _buildSimilarProductSkeletonHorizontal(bool isDark) {
+    final baseColor = isDark ? AppColors.shimmerBaseDark : AppColors.shimmerBase;
+    final highlightColor = isDark ? AppColors.shimmerHighlightDark : AppColors.shimmerHighlight;
+    
+    return Container(
+      height: 120,
+      decoration: BoxDecoration(
+        color: isDark ? DarkThemeColors.surface : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Image skeleton
+          Container(
+            height: 120,
+            width: 120,
+            decoration: BoxDecoration(
+              color: baseColor,
+              borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+            ),
+          ),
+          // Content skeleton
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Title skeleton line 1
+                  Container(
+                    height: 14,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: baseColor,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Title skeleton line 2
+                  Container(
+                    height: 14,
+                    width: 120,
+                    decoration: BoxDecoration(
+                      color: baseColor,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Price skeleton
+                  Container(
+                    height: 16,
+                    width: 80,
+                    decoration: BoxDecoration(
+                      color: baseColor,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    )
+        .animate(onPlay: (c) => c.repeat())
+        .shimmer(
+          duration: 1500.ms,
+          color: highlightColor.withOpacity(isDark ? 0.15 : 0.4),
+        );
   }
 
   @override

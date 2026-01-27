@@ -136,6 +136,7 @@ class VSSuggestionsRow extends StatelessWidget {
         itemBuilder: (context, index) {
           final s = suggestions[index];
           final isSelected = index == selectedIndex;
+          final isManualCrop = s.trackingId == -1; // Manual crops have trackingId -1
 
           return GestureDetector(
             onTap: isSelected ? null : () => onSelect(index),
@@ -150,10 +151,12 @@ class VSSuggestionsRow extends StatelessWidget {
                   border: Border.all(
                     color: isSelected 
                         ? AppColors.primary500 
-                        : (inSheet 
-                            ? (isDark ? Colors.grey[700]! : Colors.grey[300]!) 
-                            : Colors.white54),
-                    width: isSelected ? 2.5 : 1.5,
+                        : isManualCrop
+                            ? AppColors.primary500.withOpacity(0.6)
+                            : (inSheet 
+                                ? (isDark ? Colors.grey[700]! : Colors.grey[300]!) 
+                                : Colors.white54),
+                    width: isSelected ? 2.5 : isManualCrop ? 2.0 : 1.5,
                   ),
                   boxShadow: isSelected 
                       ? [BoxShadow(color: AppColors.primary500.withOpacity(0.4), blurRadius: 8)] 
@@ -184,6 +187,20 @@ class VSSuggestionsRow extends StatelessWidget {
                             child: const Icon(Icons.check, size: 10, color: Colors.white),
                           ),
                         ),
+                      // Manual crop indicator icon
+                      if (isManualCrop && !isSelected)
+                        Positioned(
+                          top: 3,
+                          right: 3,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(Iconsax.crop, size: 10, color: Colors.white),
+                          ),
+                        ),
                       Positioned(
                         left: 0, 
                         right: 0, 
@@ -198,7 +215,7 @@ class VSSuggestionsRow extends StatelessWidget {
                             ),
                           ),
                           child: Text(
-                            s.primaryLabel,
+                            isManualCrop ? 'My Crop' : s.primaryLabel,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Colors.white, 
@@ -245,6 +262,8 @@ class VSResultsSheet extends StatefulWidget {
   final VoidCallback onExpandSheet;
   final bool isPrefetching;
   final List<Product> prefetchedProducts;
+  final VoidCallback? onManualCrop;
+  final bool canManualCrop;
 
   const VSResultsSheet({
     super.key,
@@ -268,6 +287,8 @@ class VSResultsSheet extends StatefulWidget {
     required this.onExpandSheet,
     required this.isPrefetching,
     required this.prefetchedProducts,
+    this.onManualCrop,
+    this.canManualCrop = false,
   });
 
   @override
@@ -329,7 +350,10 @@ class _VSResultsSheetState extends State<VSResultsSheet> {
             if (pct >= 50 && pct < 75 && !widget.isPrefetching && !widget.isLoadingMore && widget.hasMorePages && widget.prefetchedProducts.isEmpty) {
               widget.onPrefetch();
             }
-            if (pct >= 75) widget.onLoadMore();
+            // Only trigger loadMore when not already loading and has more pages
+            if (pct >= 75 && !widget.isLoadingMore && widget.hasMorePages) {
+              widget.onLoadMore();
+            }
           }
           return false;
         },
@@ -477,13 +501,20 @@ class _VSResultsSheetState extends State<VSResultsSheet> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: Row(
             children: [
-              Text(
-                '${widget.totalProducts} results',
-                style: TextStyle(fontSize: 13, color: secondaryColor, fontWeight: FontWeight.w500),
+              Flexible(
+                child: Text(
+                  '${widget.totalProducts} results',
+                  style: TextStyle(fontSize: 13, color: secondaryColor, fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const Spacer(),
-              _ActionChip(icon: Iconsax.camera, label: 'New Search', onTap: widget.onStartNewSearch, isDark: widget.isDark),
               const SizedBox(width: 8),
+              if (widget.canManualCrop && widget.onManualCrop != null) ...[
+                _ActionChip(icon: Iconsax.crop, label: 'Crop', onTap: widget.onManualCrop!, isDark: widget.isDark),
+                const SizedBox(width: 6),
+              ],
+              _ActionChip(icon: Iconsax.camera, label: 'New', onTap: widget.onStartNewSearch, isDark: widget.isDark),
+              const SizedBox(width: 6),
               _ActionChip(icon: Iconsax.filter, label: 'Filter', isActive: widget.filterState.hasActiveFilters, onTap: widget.onShowFilter, isDark: widget.isDark),
             ],
           ),
@@ -699,8 +730,9 @@ class ViewfinderPainter extends CustomPainter {
 class ScanLinePainter extends CustomPainter {
   final double progress;
   final bool fullScreen;
+  final double? searchProgress; // 0.0 to 1.0, null to hide percentage
   
-  ScanLinePainter(this.progress, {this.fullScreen = false});
+  ScanLinePainter(this.progress, {this.fullScreen = false, this.searchProgress});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -741,6 +773,35 @@ class ScanLinePainter extends CustomPainter {
         ).createShader(Rect.fromLTWH(padding, y - 60, scanWidth, 60));
       
       canvas.drawRect(Rect.fromLTWH(padding, y - 60, scanWidth, 60), glowPaint);
+      
+      // Draw progress percentage text next to the scan line
+      if (searchProgress != null && searchProgress! > 0) {
+        final percentage = (searchProgress! * 100).toInt();
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: '$percentage%',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 4,
+                  offset: const Offset(1, 1),
+                ),
+              ],
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout();
+        
+        // Position text to the right of the scan line
+        final textX = size.width - padding - textPainter.width - 8;
+        final textY = y - textPainter.height / 2;
+        textPainter.paint(canvas, Offset(textX, textY.clamp(8, size.height - textPainter.height - 8)));
+      }
     } else {
       // Viewfinder mode - centered box (original behavior)
       final cx = size.width / 2;
@@ -755,9 +816,41 @@ class ScanLinePainter extends CustomPainter {
         ).createShader(Rect.fromLTWH(cx - half, y - 2, boxSize, 4));
 
       canvas.drawRect(Rect.fromLTWH(cx - half, y - 2, boxSize, 4), paint);
+      
+      // Draw progress percentage for viewfinder mode too
+      if (searchProgress != null && searchProgress! > 0) {
+        final percentage = (searchProgress! * 100).toInt();
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: '$percentage%',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 4,
+                  offset: const Offset(1, 1),
+                ),
+              ],
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout();
+        
+        // Position text to the right of the viewfinder box
+        final textX = cx + half + 8;
+        final textY = y - textPainter.height / 2;
+        textPainter.paint(canvas, Offset(textX, textY.clamp(cy - half, cy + half - textPainter.height)));
+      }
     }
   }
 
   @override
-  bool shouldRepaint(covariant ScanLinePainter old) => old.progress != progress || old.fullScreen != fullScreen;
+  bool shouldRepaint(covariant ScanLinePainter old) => 
+      old.progress != progress || 
+      old.fullScreen != fullScreen || 
+      old.searchProgress != searchProgress;
 }

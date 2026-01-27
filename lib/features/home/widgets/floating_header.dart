@@ -886,19 +886,24 @@ class _FloatingHeaderState extends State<FloatingHeader> {
     if (!mounted) return;
     
     try {
-      // Ensure image is under 1MB before upload (backend limit)
       String finalPath = imagePath;
       final originalSize = File(imagePath).lengthSync();
       debugPrint('🔍 Original image size: $originalSize bytes');
       
-      if (originalSize > 900000) { // If over 900KB, compress
-        debugPrint('⚠️ Image too large, compressing before upload...');
+      // Check if file is already JPEG
+      final isJpeg = imagePath.toLowerCase().endsWith('.jpg') || 
+                     imagePath.toLowerCase().endsWith('.jpeg');
+      
+      // Always convert to JPEG if not already, or compress if over 900KB
+      // This ensures HEIC, PNG, WEBP etc. are converted for TMAPI compatibility
+      if (!isJpeg || originalSize > 900000) {
+        debugPrint('🔄 Converting/compressing image to JPEG...');
         try {
           final tempDir = await getTemporaryDirectory();
           final compressPath = '${tempDir.path}/upload_${DateTime.now().millisecondsSinceEpoch}.jpg';
           
-          // First pass: moderate compression
-          var quality = originalSize > 2000000 ? 50 : 65; // More aggressive for very large files
+          // Choose quality based on file size
+          var quality = originalSize > 2000000 ? 50 : (originalSize > 900000 ? 65 : 85);
           var compressed = await FlutterImageCompress.compressAndGetFile(
             imagePath,
             compressPath,
@@ -912,7 +917,7 @@ class _FloatingHeaderState extends State<FloatingHeader> {
           
           if (compressed != null) {
             var compressedSize = File(compressed.path).lengthSync();
-            debugPrint('📏 Compressed to: $compressedSize bytes (quality: $quality)');
+            debugPrint('📏 Processed to: $compressedSize bytes (quality: $quality)');
             
             // If still over 900KB, compress more
             if (compressedSize > 900000) {
@@ -938,7 +943,7 @@ class _FloatingHeaderState extends State<FloatingHeader> {
             }
           }
         } catch (e) {
-          debugPrint('⚠️ Compression failed: $e');
+          debugPrint('⚠️ Image processing failed: $e');
         }
       }
       

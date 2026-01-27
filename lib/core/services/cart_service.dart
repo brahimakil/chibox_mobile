@@ -231,6 +231,9 @@ class CartService extends ChangeNotifier {
       price: oldItem.price,
       currencySymbol: oldItem.currencySymbol,
       subtotal: oldItem.price * quantity,
+      taxAmount: oldItem.quantity > 0 
+          ? (oldItem.taxAmount / oldItem.quantity) * quantity  // Recalculate tax based on per-item rate
+          : 0.0,
     );
     
     _cartData!.items[index] = newItem;
