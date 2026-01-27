@@ -1,5 +1,17 @@
 import 'package:equatable/equatable.dart';
 
+/// Notification Types - matches backend Notifications::TYPE_* constants
+class NotificationType {
+  static const String order = 'order';
+  static const String product = 'product';
+  static const String category = 'category';
+  static const String cart = 'cart';
+  static const String web = 'web';
+  static const String promo = 'promo';
+  static const String shipping = 'shipping';
+  static const String general = 'general';
+}
+
 /// Notification Model
 /// Maps exactly to backend notification response
 class AppNotification extends Equatable {
@@ -9,6 +21,9 @@ class AppNotification extends Equatable {
   final bool isSeen;
   final int? tableId;
   final int? rowId;
+  final String? notificationType; // Universal Navigation type
+  final String? actionUrl;        // For web redirects
+  final String? imageUrl;         // Optional notification image
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -19,9 +34,21 @@ class AppNotification extends Equatable {
     required this.isSeen,
     this.tableId,
     this.rowId,
+    this.notificationType,
+    this.actionUrl,
+    this.imageUrl,
     required this.createdAt,
     this.updatedAt,
   });
+
+  /// Check if this notification has a navigation target
+  bool get hasNavigationTarget => 
+      notificationType != null && 
+      notificationType != NotificationType.general &&
+      (rowId != null || actionUrl != null);
+
+  /// Get the target ID for navigation (order_id, product_id, etc.)
+  int? get targetId => rowId;
 
   factory AppNotification.fromJson(Map<String, dynamic> json) {
     return AppNotification(
@@ -31,6 +58,9 @@ class AppNotification extends Equatable {
       isSeen: json['is_seen'] == true || json['is_seen'] == 1,
       tableId: json['table_id'] as int?,
       rowId: json['row_id'] as int?,
+      notificationType: json['notification_type'] as String?,
+      actionUrl: json['action_url'] as String?,
+      imageUrl: json['image_url'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: json['updated_at'] != null 
           ? DateTime.parse(json['updated_at'] as String) 
@@ -46,6 +76,9 @@ class AppNotification extends Equatable {
       'is_seen': isSeen,
       'table_id': tableId,
       'row_id': rowId,
+      'notification_type': notificationType,
+      'action_url': actionUrl,
+      'image_url': imageUrl,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -58,6 +91,9 @@ class AppNotification extends Equatable {
     bool? isSeen,
     int? tableId,
     int? rowId,
+    String? notificationType,
+    String? actionUrl,
+    String? imageUrl,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -68,13 +104,19 @@ class AppNotification extends Equatable {
       isSeen: isSeen ?? this.isSeen,
       tableId: tableId ?? this.tableId,
       rowId: rowId ?? this.rowId,
+      notificationType: notificationType ?? this.notificationType,
+      actionUrl: actionUrl ?? this.actionUrl,
+      imageUrl: imageUrl ?? this.imageUrl,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
   @override
-  List<Object?> get props => [id, subject, body, isSeen, tableId, rowId, createdAt, updatedAt];
+  List<Object?> get props => [
+    id, subject, body, isSeen, tableId, rowId, 
+    notificationType, actionUrl, imageUrl, createdAt, updatedAt
+  ];
 }
 
 /// Notification Pagination

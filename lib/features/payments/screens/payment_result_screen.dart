@@ -33,7 +33,19 @@ class PaymentResultScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // On back press, trigger the same action as "Continue Shopping" / "Go Home"
+        if (onGoHome != null) {
+          onGoHome!(context);
+        } else {
+          // Fallback: just pop to first route
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+      },
+      child: Scaffold(
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -282,6 +294,7 @@ class PaymentResultScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

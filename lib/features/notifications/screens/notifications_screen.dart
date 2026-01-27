@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/models/notification_model.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/theme/theme.dart';
+import '../../../core/utils/notification_navigation_helper.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -245,10 +246,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
       context.read<NotificationService>().markAsSeen(notification.id);
     }
     
-    // Navigate based on table_id and row_id if applicable
-    // table_id can indicate which entity this notification relates to
-    // For now, show a detail dialog
-    _showNotificationDetail(notification);
+    // Try to navigate using Universal Navigation Helper
+    if (notification.hasNavigationTarget) {
+      NotificationNavigationHelper.navigateFromNotification(context, notification).then((handled) {
+        if (!handled) {
+          // Fallback to detail dialog if navigation wasn't handled
+          _showNotificationDetail(notification);
+        }
+      });
+    } else {
+      // No navigation target, show detail dialog
+      _showNotificationDetail(notification);
+    }
   }
 
   void _markAsRead(AppNotification notification) {
@@ -708,15 +717,34 @@ class _NotificationCard extends StatelessWidget {
   }
 
   IconData _getNotificationIcon() {
-    // You can extend this based on table_id to show different icons
-    // for different notification types (orders, messages, promos, etc.)
+    // Use notification_type for better icon selection
+    if (notification.notificationType != null) {
+      switch (notification.notificationType) {
+        case NotificationType.order:
+          return Iconsax.box;
+        case NotificationType.product:
+          return Iconsax.shopping_bag;
+        case NotificationType.category:
+          return Iconsax.category;
+        case NotificationType.cart:
+          return Iconsax.shopping_cart;
+        case NotificationType.web:
+        case NotificationType.promo:
+          return Iconsax.discount_shape;
+        case NotificationType.shipping:
+          return Iconsax.truck;
+        default:
+          return Iconsax.notification;
+      }
+    }
+    // Fallback to table_id based logic
     if (notification.tableId != null) {
       switch (notification.tableId) {
-        case 1: // Example: Orders table
+        case 1: // Orders table
           return Iconsax.box;
-        case 2: // Example: Messages table
+        case 2: // Messages table
           return Iconsax.message;
-        case 3: // Example: Promotions table
+        case 3: // Promotions table
           return Iconsax.discount_shape;
         default:
           return Iconsax.notification;

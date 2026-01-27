@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'firebase_options.dart';
 import 'core/theme/theme.dart';
 import 'core/constants/api_constants.dart';
@@ -114,6 +115,18 @@ class LuxeMarketApp extends StatelessWidget {
                   );
                 }
               }
+              
+              // Handle webview for promotional/web notifications
+              if (settings.name == '/webview') {
+                final args = settings.arguments as Map<String, dynamic>?;
+                final url = args?['url'] as String?;
+                if (url != null) {
+                  return MaterialPageRoute(
+                    builder: (_) => _SimpleWebViewScreen(url: url),
+                  );
+                }
+              }
+              
               return null;
             },
           );
@@ -136,6 +149,55 @@ class AppWrapper extends StatelessWidget {
         }
         return const LoginScreen();
       },
+    );
+  }
+}
+
+/// Simple WebView Screen for promotional/web notifications
+class _SimpleWebViewScreen extends StatefulWidget {
+  final String url;
+  
+  const _SimpleWebViewScreen({required this.url});
+
+  @override
+  State<_SimpleWebViewScreen> createState() => _SimpleWebViewScreenState();
+}
+
+class _SimpleWebViewScreenState extends State<_SimpleWebViewScreen> {
+  late final WebViewController _controller;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (_) => setState(() => _isLoading = true),
+          onPageFinished: (_) => setState(() => _isLoading = false),
+        ),
+      )
+      ..loadRequest(Uri.parse(widget.url));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Details'),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Stack(
+        children: [
+          WebViewWidget(controller: _controller),
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator()),
+        ],
+      ),
     );
   }
 }

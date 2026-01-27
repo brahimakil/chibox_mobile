@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../constants/api_constants.dart';
+import '../models/notification_model.dart';
+import '../utils/notification_navigation_helper.dart';
 import 'api_service.dart';
 
 /// Global navigator key for handling navigation from FCM notifications
@@ -134,12 +136,11 @@ class FcmService {
     _handleNotificationNavigation(response.payload);
   }
   
-  /// Handle navigation based on notification data
+  /// Handle navigation based on notification data - UNIVERSAL NAVIGATION
   void _handleNotificationNavigation(String? payload) {
     if (payload == null || payload.isEmpty) return;
     
     try {
-      // Parse payload - it might be a string representation of a map
       Map<String, dynamic>? data;
       
       // Try parsing as JSON first
@@ -147,7 +148,6 @@ class FcmService {
         data = json.decode(payload);
       } catch (_) {
         // If not JSON, try parsing as Dart map string representation
-        // e.g., "{type: order_created, order_id: 123}"
         if (payload.startsWith('{') && payload.endsWith('}')) {
           final cleanPayload = payload.substring(1, payload.length - 1);
           data = {};
@@ -162,37 +162,32 @@ class FcmService {
       
       if (data == null) return;
       
-      final type = data['type']?.toString() ?? '';
+      debugPrint('📬 Parsed notification data: $data');
       
-      // Handle order-related notifications
-      if (type.startsWith('order_')) {
-        final orderId = data['order_id']?.toString();
-        if (orderId != null) {
-          _navigateToOrderDetails(int.tryParse(orderId));
-        }
+      // Use Universal Navigation Helper
+      final context = navigatorKey.currentContext;
+      if (context == null) {
+        // Store for later navigation if context not available
+        _pendingNotificationData = data;
+        debugPrint('📬 Stored pending notification data for later navigation');
+        return;
       }
-      // Add more notification type handlers here as needed
+      
+      // Navigate using the universal helper
+      NotificationNavigationHelper.navigateFromPushData(context, data);
       
     } catch (e) {
       debugPrint('❌ Error parsing notification payload: $e');
     }
   }
   
-  /// Navigate to order details screen
-  void _navigateToOrderDetails(int? orderId) {
-    if (orderId == null) return;
-    
-    final context = navigatorKey.currentContext;
-    if (context == null) {
-      // Store for later navigation if context not available
-      _pendingNotificationData = {'type': 'order', 'order_id': orderId};
-      debugPrint('📬 Stored pending order notification for orderId: $orderId');
-      return;
+  /// Process any pending notification navigation (call after app is ready)
+  void processPendingNotification(BuildContext context) {
+    if (_pendingNotificationData != null) {
+      debugPrint('📬 Processing pending notification navigation');
+      NotificationNavigationHelper.navigateFromPushData(context, _pendingNotificationData!);
+      _pendingNotificationData = null;
     }
-    
-    debugPrint('📬 Navigating to order details: $orderId');
-    // Import will be handled where this is used
-    Navigator.of(context).pushNamed('/order-details', arguments: orderId);
   }
 
   /// Show local notification
