@@ -41,6 +41,12 @@ class ApiConstants {
   static const String removeFromCart = '$apiPrefix-cart/remove-from-cart';
   static const String clearCart = '$apiPrefix-cart/clear-cart';
 
+  // ============== COUPON ENDPOINTS ==============
+  static const String getPublicCoupons = '$apiPrefix-coupon/get-public-coupons';
+  static const String claimCoupon = '$apiPrefix-coupon/claim-coupon';
+  static const String getMyCoupons = '$apiPrefix-coupon/get-my-coupons';
+  static const String validateCoupon = '$apiPrefix-coupon/validate-coupon';
+
   // ============== CATEGORY ENDPOINTS ==============
   static const String getAllCategories = '$apiPrefix-category/get-all-categories';
   static const String getCategoryById = '$apiPrefix-category/get-category-by-id';

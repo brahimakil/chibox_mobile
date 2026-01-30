@@ -4,8 +4,10 @@ import 'package:iconsax/iconsax.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/address_model.dart';
 import '../../../core/models/cart_model.dart';
+import '../../../core/models/coupon_model.dart';
 import '../../../core/services/address_service.dart';
 import '../../../core/services/cart_service.dart';
+import '../../../core/services/coupon_service.dart';
 import '../../../core/services/navigation_provider.dart';
 import '../../../core/services/payment_service.dart';
 import '../../../core/theme/theme.dart';
@@ -15,6 +17,7 @@ import '../../orders/screens/order_details_screen.dart';
 import '../../orders/screens/orders_list_screen.dart';
 import '../../payments/screens/payment_webview_screen.dart';
 import '../../payments/screens/payment_result_screen.dart';
+import '../widgets/coupon_selection_sheet.dart';
 
 /// Checkout Screen with Payment Method Selection
 /// The payment UI is temporary/fake but order creation is real
@@ -128,10 +131,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       final cartService = context.read<CartService>();
+      final couponService = context.read<CouponService>();
 
       // Calculate tax for backend
       final selectedItems = _getSelectedItems(cartService);
       final taxAmount = _calculateSelectedTax(selectedItems);
+      
+      // Get coupon info if applied
+      final appliedCoupon = couponService.appliedCoupon;
+      final validationResult = couponService.validationResult;
       
       // Build checkout data matching backend requirements
       // All payments go through Whish Money (payment first, then order)
@@ -156,6 +164,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         // Include selected cart item IDs for partial checkout
         if (widget.selectedCartItemIds != null && widget.selectedCartItemIds!.isNotEmpty)
           'cart_item_ids': widget.selectedCartItemIds,
+        // Coupon info - backend will validate again
+        if (appliedCoupon != null && validationResult != null) ...{
+          'coupon_code': appliedCoupon.code,
+          'coupon_usage_id': validationResult.usageId,
+          'discount_amount': couponService.discountAmount,
+        },
       };
 
       // Initiate payment FIRST, order created on success
@@ -234,6 +248,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // Success! Backend created order and cleared cart
       // Refresh cart to show it's empty
       context.read<CartService>().fetchCart();
+      
+      // Clear the applied coupon and refresh coupons list (coupon was redeemed)
+      context.read<CouponService>().clearAppliedCoupon();
+      context.read<CouponService>().fetchMyCoupons();
       
       // Show success result screen
       Navigator.pushReplacement(
@@ -773,10 +791,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _buildOrderSummary(List<CartItem> selectedItems, double subtotal, String currency, bool isDark) {
     final tax = _calculateSelectedTax(selectedItems);
-    final total = subtotal + tax;
     final itemCount = selectedItems.length;
     final isAir = widget.shippingMethod == 'air';
     final methodName = isAir ? 'Air ✈️' : 'Sea 🚢';
+    
+    // Get coupon discount
+    final couponService = context.watch<CouponService>();
+    final discountAmount = couponService.discountAmount;
+    final appliedCoupon = couponService.appliedCoupon;
+    final subtotalAfterDiscount = subtotal - discountAmount;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -788,6 +811,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Column(
         children: [
           _buildSummaryRow('Items ($itemCount)', '$currency${subtotal.toStringAsFixed(2)}', isDark),
+          const SizedBox(height: 12),
+          // Coupon row
+          _buildCouponRow(subtotal, currency, isDark, appliedCoupon, discountAmount),
+          if (discountAmount > 0) ...[
+            const SizedBox(height: 12),
+            _buildSummaryRow(
+              'Subtotal after discount',
+              '$currency${subtotalAfterDiscount.toStringAsFixed(2)}',
+              isDark,
+            ),
+          ],
           const SizedBox(height: 12),
           // Shipping method selected (cost calculated after order)
           Row(
@@ -874,13 +908,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
-              Text(
-                '$currency${subtotal.toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary500,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (discountAmount > 0) ...[                    Text(
+                      '$currency${subtotal.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        decoration: TextDecoration.lineThrough,
+                        color: isDark ? Colors.white38 : Colors.grey,
+                      ),
+                    ),
+                  ],
+                  Text(
+                    '$currency${subtotalAfterDiscount.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary500,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -912,8 +960,107 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  Widget _buildCouponRow(double subtotal, String currency, bool isDark, Coupon? appliedCoupon, double discountAmount) {
+    return InkWell(
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => CouponSelectionSheet(
+            subtotal: subtotal,
+            currencySymbol: currency,
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: appliedCoupon != null
+              ? Colors.green.withOpacity(0.1)
+              : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.05)),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: appliedCoupon != null
+                ? Colors.green.withOpacity(0.3)
+                : (isDark ? Colors.white12 : Colors.grey.shade300),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Iconsax.ticket_discount,
+              size: 20,
+              color: appliedCoupon != null ? Colors.green : (isDark ? Colors.white60 : Colors.grey[600]),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: appliedCoupon != null
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          appliedCoupon.code,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.green[700],
+                          ),
+                        ),
+                        Text(
+                          appliedCoupon.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.white54 : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    )
+                  : Text(
+                      'Apply Coupon',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isDark ? Colors.white70 : Colors.grey[700],
+                      ),
+                    ),
+            ),
+            if (appliedCoupon != null) ...[
+              Text(
+                '-$currency${discountAmount.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green[700],
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  context.read<CouponService>().clearAppliedCoupon();
+                },
+                child: Icon(
+                  Icons.close,
+                  size: 18,
+                  color: isDark ? Colors.white54 : Colors.grey[600],
+                ),
+              ),
+            ] else
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: isDark ? Colors.white54 : Colors.grey[600],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBottomBar(double subtotal, String currency, bool isDark) {
-    final total = subtotal; // Just product subtotal, shipping calculated after order
+    final couponService = context.watch<CouponService>();
+    final discountAmount = couponService.discountAmount;
+    final total = subtotal - discountAmount; // Subtract discount from subtotal
     final canCheckout = !_isLoading;
 
     return Container(
@@ -937,19 +1084,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Subtotal',
+                  discountAmount > 0 ? 'Pay Now' : 'Subtotal',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.white60 : Colors.grey[600],
                   ),
                 ),
-                Text(
-                  '$currency${total.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary500,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '$currency${total.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary500,
+                      ),
+                    ),
+                    if (discountAmount > 0) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        '$currency${subtotal.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.white38 : Colors.grey,
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),

@@ -22,6 +22,7 @@ import 'core/services/order_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/payment_service.dart';
 import 'core/services/shipping_service.dart';
+import 'core/services/coupon_service.dart';
 import 'core/services/fcm_service.dart';
 import 'features/navigation/main_shell.dart';
 import 'features/auth/screens/login_screen.dart';
@@ -90,6 +91,7 @@ class LuxeMarketApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => NotificationService()),
         ChangeNotifierProvider(create: (_) => PaymentService()),
         ChangeNotifierProvider(create: (_) => ShippingService()),
+        ChangeNotifierProvider(create: (_) => CouponService()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {

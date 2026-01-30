@@ -26,6 +26,7 @@ import '../widgets/flash_sale_section.dart';
 import '../widgets/hot_sellings_section.dart';
 import '../widgets/category_products_grid.dart';
 import '../widgets/quick_actions_row.dart';
+import '../widgets/promo_banner_widget.dart';
 import '../../../shared/widgets/widgets.dart';
 import 'all_products_screen.dart';
 import 'unified_products_grid_screen.dart';
@@ -292,6 +293,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (selectedCategory != null) return const SliverToBoxAdapter(child: SizedBox.shrink());
                     return const SliverToBoxAdapter(
                       child: QuickActionsRow(),
+                    );
+                  },
+                ),
+
+                // Promo Banner - hide when category selected
+                ValueListenableBuilder<ProductCategory?>(
+                  valueListenable: _selectedCategoryNotifier,
+                  builder: (context, selectedCategory, _) {
+                    if (selectedCategory != null) return const SliverToBoxAdapter(child: SizedBox.shrink());
+                    return const SliverToBoxAdapter(
+                      child: PromoBannerWidget(),
                     );
                   },
                 ),

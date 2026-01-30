@@ -121,12 +121,12 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: SizedBox(
-              height: 190, // Height for 2 rows (reduced)
+              height: 250, // Height for 2 rows (SHEIN style - bigger circles)
               child: SingleChildScrollView(
                 controller: _scrollController,
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -205,11 +205,11 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
             child: needsScrolling
                 // Many items: use horizontal scrolling
                 ? SizedBox(
-                    height: 190,
+                    height: 250,
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -230,7 +230,7 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
                   )
                 // Few items: expand to fill width
                 : Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                     child: usesTwoRows
                         ? _buildTwoRowGrid(context, subcategories, isDark, (itemCount / 2).ceil(), itemCount - (itemCount / 2).ceil(), itemCount)
                         : _buildSingleRowGrid(context, subcategories, isDark, itemCount),
@@ -361,11 +361,11 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: SizedBox(
-              height: 190,
+              height: 250,
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: List.generate(5, (colIndex) {
@@ -392,26 +392,26 @@ class _HomeCategoriesSectionState extends State<HomeCategoriesSection> {
       baseColor: baseColor,
       highlightColor: highlightColor,
       child: Container(
-        width: 64,
-        height: 80,
-        margin: const EdgeInsets.only(right: 6, bottom: 4),
+        width: 80,
+        height: 105,
+        margin: const EdgeInsets.only(right: 8, bottom: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Circle skeleton
             Container(
-              width: 46,
-              height: 46,
+              width: 60,
+              height: 60,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: baseColor,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             // Text skeleton
             Container(
-              width: 42,
-              height: 8,
+              width: 54,
+              height: 10,
               decoration: BoxDecoration(
                 color: baseColor,
                 borderRadius: BorderRadius.circular(4),
@@ -471,16 +471,16 @@ class _CategoryItem extends StatelessWidget {
       children: [
         // Circular image
         Container(
-          width: 46,
-          height: 46,
+          width: 60,
+          height: 60,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: isDark ? Colors.grey[800] : Colors.grey[100],
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 4,
-                offset: const Offset(0, 1),
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -488,7 +488,7 @@ class _CategoryItem extends StatelessWidget {
             child: CachedNetworkImage(
               imageUrl: ImageHelper.parse(category.mainImage) ?? '',
               fit: BoxFit.cover,
-              memCacheWidth: 100,
+              memCacheWidth: 140,
               placeholder: (_, __) => Image.asset(
                 'assets/images/category_loadingorfailbak.png',
                 fit: BoxFit.cover,
@@ -500,12 +500,12 @@ class _CategoryItem extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         // Name
         Text(
           category.name,
           style: TextStyle(
-            fontSize: 9,
+            fontSize: 11,
             fontWeight: FontWeight.w500,
             color: isDark ? Colors.white70 : Colors.black87,
             height: 1.2,
@@ -521,13 +521,13 @@ class _CategoryItem extends StatelessWidget {
       onTap: onTap,
       child: expanded
           ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(vertical: 6),
               child: content,
             )
           : Container(
-              width: 64,
-              height: 80,
-              margin: const EdgeInsets.only(right: 6, bottom: 4),
+              width: 80,
+              height: 105,
+              margin: const EdgeInsets.only(right: 8, bottom: 6),
               child: content,
             ),
     );
@@ -548,15 +548,15 @@ class _AllCategoriesButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 64,
-        height: 80,
-        margin: const EdgeInsets.only(right: 6, bottom: 4),
+        width: 80,
+        height: 105,
+        margin: const EdgeInsets.only(right: 8, bottom: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 46,
-              height: 46,
+              width: 60,
+              height: 60,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: AppColors.primary500.withOpacity(0.1),
@@ -567,15 +567,15 @@ class _AllCategoriesButton extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.grid_view_rounded,
-                size: 18,
+                size: 24,
                 color: AppColors.primary500,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
               'All',
               style: TextStyle(
-                fontSize: 9,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
                 color: AppColors.primary500,
               ),
@@ -607,8 +607,8 @@ class _ViewAllSubcategoriesButton extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
-          width: 46,
-          height: 46,
+          width: 60,
+          height: 60,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: AppColors.primary500.withOpacity(0.1),
@@ -619,15 +619,15 @@ class _ViewAllSubcategoriesButton extends StatelessWidget {
           ),
           child: const Icon(
             Iconsax.arrow_right_3,
-            size: 18,
+            size: 24,
             color: AppColors.primary500,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           'View All',
           style: TextStyle(
-            fontSize: 9,
+            fontSize: 11,
             fontWeight: FontWeight.w600,
             color: AppColors.primary500,
           ),
@@ -640,13 +640,13 @@ class _ViewAllSubcategoriesButton extends StatelessWidget {
       onTap: onTap,
       child: expanded
           ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(vertical: 6),
               child: content,
             )
           : Container(
-              width: 64,
-              height: 80,
-              margin: const EdgeInsets.only(right: 6, bottom: 4),
+              width: 80,
+              height: 105,
+              margin: const EdgeInsets.only(right: 8, bottom: 6),
               child: content,
             ),
     );

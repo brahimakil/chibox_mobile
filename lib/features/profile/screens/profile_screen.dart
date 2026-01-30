@@ -10,6 +10,7 @@ import '../../../shared/widgets/guest_guard.dart';
 import '../../address/screens/address_list_screen.dart';
 import '../../orders/screens/orders_list_screen.dart';
 import '../../notifications/screens/notifications_screen.dart';
+import '../../deals/screens/deals_screen.dart';
 import '../../support/screens/help_center_screen.dart';
 import '../../support/screens/contact_us_screen.dart';
 import '../../support/screens/about_screen.dart';
@@ -130,6 +131,16 @@ class ProfileScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const OrdersListScreen()),
+                      );
+                    }),
+                  ),
+                  _MenuItem(
+                    icon: Iconsax.ticket_discount, 
+                    title: 'Deals & Coupons', 
+                    onTap: () => _handleProtectedAction(context, authService, 'Deals & Coupons', () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const DealsScreen()),
                       );
                     }),
                   ),

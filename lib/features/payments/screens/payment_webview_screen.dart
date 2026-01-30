@@ -148,13 +148,17 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
 
     try {
       final paymentService = Provider.of<PaymentService>(context, listen: false);
+      debugPrint('🔍 Polling verify for: ${widget.externalId}');
       final result = await paymentService.verifyPayment(
         externalId: widget.externalId,
       );
 
+      debugPrint('🔍 Verify result: verified=${result.verified}, status=${result.status}, orderId=${result.orderId}');
+
       if (!mounted) return;
 
       if (result.verified && result.isPaymentSuccess) {
+        debugPrint('✅ Payment verified as SUCCESS - popping webview');
         _pollTimer?.cancel();
         Navigator.of(context).pop(PaymentWebViewResult(
           success: true,
@@ -163,6 +167,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
           orderId: result.orderId,
         ));
       } else if (result.verified && result.isPaymentFailed) {
+        debugPrint('❌ Payment verified as FAILED - popping webview');
         _pollTimer?.cancel();
         if (!silent) {
           Navigator.of(context).pop(PaymentWebViewResult(
@@ -172,8 +177,9 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             orderId: result.orderId,
           ));
         }
+      } else {
+        debugPrint('⏳ Payment still pending, continuing to poll...');
       }
-      // If still pending, continue polling
     } catch (e) {
       debugPrint('❌ Verification error: $e');
     } finally {
