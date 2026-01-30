@@ -329,12 +329,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     }
   }
 
-  Future<void> _fetchFullDetails() async {
+  Future<void> _fetchFullDetails({bool forceRefresh = false}) async {
     setState(() => _isLoading = true);
     final productService = Provider.of<ProductService>(context, listen: false);
-    debugPrint('🔍 Fetching full details for product ${_product.id}');
+    debugPrint('🔍 Fetching full details for product ${_product.id}${forceRefresh ? ' (FORCE REFRESH)' : ''}');
     debugPrint('📦 Initial product - options: ${_product.options?.length ?? 'null'}, variants: ${_product.variants?.length ?? 'null'}');
-    final fullProduct = await productService.getProductDetails(_product.id);
+    final fullProduct = await productService.getProductDetails(_product.id, forceRefresh: forceRefresh);
     
     if (mounted && fullProduct != null) {
       debugPrint('✅ Full product loaded - id: ${fullProduct.id}, categoryId: ${fullProduct.categoryId}, relatedProducts: ${fullProduct.relatedProducts?.length ?? 0}');
@@ -463,19 +463,37 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               );
 
               // Add all items to cart
+              bool hasStaleVariant = false;
               for (var item in cartItems) {
                 final variant = item['variant'] as ProductVariant?;
                 final quantity = item['quantity'] as int;
                 
-                await cartService.addToCart(
+                final success = await cartService.addToCart(
                   productId: _product.id,
                   quantity: quantity,
                   variantId: variant?.id,
                 );
+                
+                // Check if the variant is stale (product needs refresh)
+                if (!success && cartService.error == 'VARIANT_STALE') {
+                  hasStaleVariant = true;
+                  break;
+                }
               }
               
-              // Update local selection to match the last added item (optional, for UX continuity)
-              // Or just leave it as is.
+              // If variant is stale, refresh the product and notify user
+              if (hasStaleVariant && mounted) {
+                debugPrint('🔄 Variant stale - refreshing product with FORCE REFRESH...');
+                // Clear selected options and variant
+                setState(() {
+                  _selectedOptions.clear();
+                  _selectedVariant = null;
+                });
+                // Refresh product data with force refresh to bypass cache
+                await _fetchFullDetails(forceRefresh: true);
+                // Note: Snackbar cannot be shown here as the bottom sheet context is gone
+                // The user will see the refreshed options when they tap "Add to Cart" again
+              }
               
             } finally {
               if (mounted) {

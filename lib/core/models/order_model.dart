@@ -308,6 +308,7 @@ class OrderDetails {
   final String? shippingPaymentId;
   final double taxAmount;
   final double discountAmount;
+  final bool isFirstOrderDiscount;
   final double total;
   final int currencyId;
   final String currencySymbol;
@@ -335,6 +336,7 @@ class OrderDetails {
     this.shippingPaymentId,
     required this.taxAmount,
     required this.discountAmount,
+    this.isFirstOrderDiscount = false,
     required this.total,
     required this.currencyId,
     required this.currencySymbol,
@@ -364,6 +366,7 @@ class OrderDetails {
       shippingPaymentId: json['shipping_payment_id'],
       taxAmount: (json['tax_amount'] ?? 0).toDouble(),
       discountAmount: (json['discount_amount'] ?? 0).toDouble(),
+      isFirstOrderDiscount: json['first_order_discount'] ?? false,
       total: (json['total'] ?? 0).toDouble(),
       currencyId: json['currency_id'] ?? 6,
       currencySymbol: json['currency_symbol'] ?? '\$',

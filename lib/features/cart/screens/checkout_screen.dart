@@ -128,10 +128,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       final cartService = context.read<CartService>();
+
+      // Calculate tax for backend
+      final selectedItems = _getSelectedItems(cartService);
+      final taxAmount = _calculateSelectedTax(selectedItems);
       
       // Build checkout data matching backend requirements
       // All payments go through Whish Money (payment first, then order)
       final checkoutData = {
+        'tax_amount': taxAmount,
         'address_first_name': _selectedAddress!.firstName,
         'address_last_name': _selectedAddress!.lastName,
         'address_country_code': _selectedAddress!.countryCode,
@@ -344,8 +349,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ),
           
-          // Bottom Checkout Button
-          _buildBottomBar(selectedTotal, currency, isDark),
+          // Bottom Checkout Button - pass subtotal only (no tax)
+          _buildBottomBar(selectedSubtotal, currency, isDark),
         ],
       ),
     );
@@ -814,8 +819,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          // Note about deferred shipping payment
+          const SizedBox(height: 12),
+          // Note about deferred shipping & tax payment
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -828,10 +833,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               children: [
                 Row(
                   children: [
-                    Icon(Iconsax.info_circle, size: 18, color: Colors.amber[700]),
+                    Icon(Iconsax.timer_1, size: 18, color: Colors.amber[700]),
                     const SizedBox(width: 8),
                     Text(
-                      'Pay for Delivery Later',
+                      'Shipping & Tax - Pay Later',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
@@ -840,21 +845,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Text(
-                  'You will pay for products now. Delivery cost will be confirmed by our team and you will be notified to complete the payment.',
+                  '• Shipping cost will be calculated and confirmed by our team\n'
+                  '• Once confirmed, you\'ll be notified to pay for shipping\n'
+                  '• Tax (if applicable) will also be added at that time',
                   style: TextStyle(
                     fontSize: 11,
+                    height: 1.5,
                     color: Colors.amber[900]?.withOpacity(0.8),
                   ),
                 ),
               ],
             ),
           ),
-          if (tax > 0) ...[
-            const SizedBox(height: 12),
-            _buildSummaryRow('Tax', '\$${tax.toStringAsFixed(2)}', isDark),
-          ],
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Divider(),
@@ -863,7 +867,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Total',
+                'Pay Now (Products)',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -871,7 +875,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               ),
               Text(
-                '$currency${total.toStringAsFixed(2)}',
+                '$currency${subtotal.toStringAsFixed(2)}',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,

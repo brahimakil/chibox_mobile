@@ -109,6 +109,8 @@ class PaymentInitResponse {
   final String? currency;
   final String? invoice;
   final bool existing;
+  final double? discountAmount;
+  final bool isFirstOrderDiscount;
 
   PaymentInitResponse({
     required this.success,
@@ -120,6 +122,8 @@ class PaymentInitResponse {
     this.currency,
     this.invoice,
     this.existing = false,
+    this.discountAmount,
+    this.isFirstOrderDiscount = false,
   });
 
   factory PaymentInitResponse.fromJson(Map<String, dynamic> json) {
@@ -134,6 +138,8 @@ class PaymentInitResponse {
       currency: data?['currency'],
       invoice: data?['invoice'],
       existing: data?['existing'] ?? false,
+      discountAmount: data?['discount_amount']?.toDouble(),
+      isFirstOrderDiscount: data?['is_first_order_discount'] ?? false,
     );
   }
 

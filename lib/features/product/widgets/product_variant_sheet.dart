@@ -5,6 +5,7 @@ import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import '../../../core/models/product_model.dart';
 import '../../../core/theme/theme.dart';
+import '../../../shared/widgets/common/quantity_input_dialog.dart';
 
 class ProductVariantSheet extends StatefulWidget {
   final Product product;
@@ -835,18 +836,35 @@ class _ProductVariantSheetState extends State<ProductVariantSheet> {
                     padding: EdgeInsets.zero,
                     color: AppColors.primary500,
                   ),
-                  Text(
-                    '$qty',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary500,
+                  GestureDetector(
+                    onTap: () async {
+                      final newQuantity = await QuantityInputDialog.show(
+                        context,
+                        currentQuantity: qty,
+                        minQuantity: 1,
+                        maxQuantity: 100,
+                        productName: variant.name ?? widget.product.name,
+                      );
+                      if (newQuantity != null && newQuantity != qty) {
+                        setState(() => _quantities[variant.id] = newQuantity);
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        '$qty',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary500,
+                        ),
+                      ),
                     ),
                   ),
                 ],
                 IconButton(
-                  onPressed: () => setState(() {
+                  onPressed: qty < 100 ? () => setState(() {
                     _quantities[variant.id] = qty + 1;
-                  }),
+                  }) : null,
                   icon: const Icon(Icons.add, size: 18),
                   constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                   padding: EdgeInsets.zero,
@@ -986,18 +1004,35 @@ class _ProductVariantSheetState extends State<ProductVariantSheet> {
                             padding: EdgeInsets.zero,
                             color: AppColors.primary500,
                           ),
-                          Text(
-                            '$qty',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary500,
+                          GestureDetector(
+                            onTap: () async {
+                              final newQuantity = await QuantityInputDialog.show(
+                                context,
+                                currentQuantity: qty,
+                                minQuantity: 1,
+                                maxQuantity: 100,
+                                productName: value.name,
+                              );
+                              if (newQuantity != null && newQuantity != qty) {
+                                setState(() => _quantities[variant!.id] = newQuantity);
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: Text(
+                                '$qty',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primary500,
+                                ),
+                              ),
                             ),
                           ),
                         ],
                         IconButton(
-                          onPressed: () => setState(() {
+                          onPressed: qty < 100 ? () => setState(() {
                             _quantities[variant!.id] = qty + 1;
-                          }),
+                          }) : null,
                           icon: const Icon(Icons.add, size: 18),
                           constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                           padding: EdgeInsets.zero,
@@ -1524,14 +1559,31 @@ class _ProductVariantSheetState extends State<ProductVariantSheet> {
                               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                               padding: EdgeInsets.zero,
                             ),
-                            Text(
-                              '$_singleQuantity',
-                              style: AppTypography.bodyMedium(
-                                color: isDark ? Colors.white : Colors.black,
-                              ).copyWith(fontWeight: FontWeight.bold),
+                            GestureDetector(
+                              onTap: () async {
+                                final newQuantity = await QuantityInputDialog.show(
+                                  context,
+                                  currentQuantity: _singleQuantity,
+                                  minQuantity: 1,
+                                  maxQuantity: 100,
+                                  productName: widget.product.name,
+                                );
+                                if (newQuantity != null && newQuantity != _singleQuantity) {
+                                  setState(() => _singleQuantity = newQuantity);
+                                }
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                child: Text(
+                                  '$_singleQuantity',
+                                  style: AppTypography.bodyMedium(
+                                    color: isDark ? Colors.white : Colors.black,
+                                  ).copyWith(fontWeight: FontWeight.bold),
+                                ),
+                              ),
                             ),
                             IconButton(
-                              onPressed: () => setState(() => _singleQuantity++),
+                              onPressed: _singleQuantity < 100 ? () => setState(() => _singleQuantity++) : null,
                               icon: Icon(Icons.add, size: 18, color: isDark ? Colors.white : Colors.black),
                               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                               padding: EdgeInsets.zero,

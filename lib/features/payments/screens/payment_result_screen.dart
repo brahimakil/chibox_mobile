@@ -13,6 +13,8 @@ class PaymentResultScreen extends StatelessWidget {
   final int? orderId;
   final double? amount;
   final String? currency;
+  final double? discountAmount;
+  final bool isFirstOrderDiscount;
   final ContextCallback? onViewOrder;
   final ContextCallback? onRetryPayment;
   final ContextCallback? onGoHome;
@@ -24,6 +26,8 @@ class PaymentResultScreen extends StatelessWidget {
     this.orderId,
     this.amount,
     this.currency,
+    this.discountAmount,
+    this.isFirstOrderDiscount = false,
     this.onViewOrder,
     this.onRetryPayment,
     this.onGoHome,
@@ -125,6 +129,53 @@ class PaymentResultScreen extends StatelessWidget {
               )
                   .animate()
                   .fadeIn(delay: 400.ms),
+              
+              // First Order Discount Banner
+              if (success && isFirstOrderDiscount && discountAmount != null && discountAmount! > 0) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.green.shade400,
+                        Colors.teal.shade500,
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('🎁', style: TextStyle(fontSize: 20)),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'First Order Discount Applied!',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            'You saved ${currency ?? '\$'}${discountAmount!.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                )
+                    .animate()
+                    .fadeIn(delay: 450.ms)
+                    .slideY(begin: 0.2, end: 0),
+              ],
               
               // Order ID
               if (orderId != null) ...[

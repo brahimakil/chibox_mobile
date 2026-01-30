@@ -20,6 +20,7 @@ import '../../../core/models/product_model.dart';
 import '../../product/screens/product_details_screen.dart';
 import '../../navigation/main_shell.dart';
 import 'shipping_selection_screen.dart';
+import '../../../shared/widgets/common/quantity_input_dialog.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -244,9 +245,10 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   double _calculateSelectedTotal(CartService cartService) {
+    // Total is now just subtotal - tax is paid later
     return cartService.items
         .where((item) => _selectedItemIds.contains(item.id))
-        .fold(0.0, (sum, item) => sum + item.subtotal + item.taxAmount);
+        .fold(0.0, (sum, item) => sum + item.subtotal);
   }
 
   double _calculateSelectedSubtotal(CartService cartService) {
@@ -811,14 +813,29 @@ class _CartScreenState extends State<CartScreen> {
                                                 }
                                               },
                                             ),
-                                            SizedBox(
-                                              width: 32,
-                                              child: Center(
-                                                child: Text(
-                                                  '${item.quantity}',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: isDark ? Colors.white : Colors.black,
+                                            GestureDetector(
+                                              onTap: () async {
+                                                final newQuantity = await QuantityInputDialog.show(
+                                                  context,
+                                                  currentQuantity: item.quantity,
+                                                  minQuantity: 1,
+                                                  maxQuantity: 100,
+                                                  productName: item.productName,
+                                                );
+                                                if (newQuantity != null && newQuantity != item.quantity) {
+                                                  await cartService.updateCartItem(item.id, newQuantity);
+                                                  _fetchShippingCosts();
+                                                }
+                                              },
+                                              child: SizedBox(
+                                                width: 40,
+                                                child: Center(
+                                                  child: Text(
+                                                    '${item.quantity}',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isDark ? Colors.white : Colors.black,
+                                                    ),
                                                   ),
                                                 ),
                                               ),
@@ -826,8 +843,10 @@ class _CartScreenState extends State<CartScreen> {
                                             _QuantityButton(
                                               icon: Icons.add,
                                               onTap: () async {
-                                                await cartService.updateCartItem(item.id, item.quantity + 1);
-                                                _fetchShippingCosts(); // Refresh shipping after quantity change
+                                                if (item.quantity < 100) {
+                                                  await cartService.updateCartItem(item.id, item.quantity + 1);
+                                                  _fetchShippingCosts(); // Refresh shipping after quantity change
+                                                }
                                               },
                                             ),
                                           ],
@@ -881,8 +900,8 @@ class _CartScreenState extends State<CartScreen> {
                           ),
                         ],
                       ),
-                      // Tax row (only show if there's tax)
-                      if (_calculateSelectedTax(cartService) > 0) ...[
+                      // Tax removed - will be paid later along with shipping
+                      if (false) ...[  // Tax hidden from cart
                         AppSpacing.verticalSm,
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -903,6 +922,30 @@ class _CartScreenState extends State<CartScreen> {
                         ),
                       ],
                       AppSpacing.verticalSm,
+                      // Info note about shipping payment
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.amber.withOpacity(0.2)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, size: 16, color: Colors.amber[700]),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Shipping & Tax will be calculated and paid separately after order confirmation.',
+                                style: AppTypography.bodySmall(
+                                  color: Colors.amber[800],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      AppSpacing.verticalSm,
                       // Total row
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -911,7 +954,7 @@ class _CartScreenState extends State<CartScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Total',
+                                'Products Total',
                                 style: AppTypography.headingSmall(
                                   color: isDark ? DarkThemeColors.text : LightThemeColors.text,
                                 ),

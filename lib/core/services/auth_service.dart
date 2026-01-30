@@ -67,6 +67,13 @@ class AuthService extends ChangeNotifier {
     await prefs.remove('is_guest');
   }
 
+  /// Mark user as no longer eligible for first order discount
+  /// Called after successful first order placement
+  void markFirstOrderUsed() {
+    // TODO: Implement when isFirstOrderEligible is added to User model
+    debugPrint('✅ First order discount marking - feature pending implementation');
+  }
+
   /// Register new user
   Future<ApiResponse<int>> register({
     required String countryCode,

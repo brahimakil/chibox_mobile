@@ -652,18 +652,18 @@ packages:
     dependency: transitive
     description:
       name: google_mlkit_commons
-      sha256: "9990a65f407a3ef6bae646bf10143faa93fec126683771465bc6c0b43fb0e6e9"
+      sha256: "8f40fbac10685cad4715d11e6a0d86837d9ad7168684dfcad29610282a88e67a"
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.1"
+    version: "0.11.0"
   google_mlkit_object_detection:
     dependency: "direct main"
     description:
       name: google_mlkit_object_detection
-      sha256: c516ed16c011a47c3abc8f087c6183fa1980b032278a4a1b45872e98d6f4180e
+      sha256: "0f740f046d74faf81d9c44cdbe4accf33888ed9f877e30efbfad4578d45ebfcd"
       url: "https://pub.dev"
     source: hosted
-    version: "0.13.1"
+    version: "0.15.0"
   html:
     dependency: transitive
     description:
@@ -721,7 +721,7 @@ packages:
     source: hosted
     version: "6.1.0"
   image_cropper_platform_interface:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: image_cropper_platform_interface
       sha256: "2d8db8f4b638e448fa89a1e77cd8f053b4547472bd3ae073169e86626d03afef"
@@ -809,13 +809,13 @@ packages:
     source: hosted
     version: "0.19.0"
   js:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: js
-      sha256: f2c445dce49627136094980615a031419f7f3eb393237e4ecd97ac15dea343f3
+      sha256: "53385261521cc4a0c4658fd0ad07a7d14591cf8fc33abbceae306ddb974888dc"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.7"
+    version: "0.7.2"
   json_annotation:
     dependency: transitive
     description:

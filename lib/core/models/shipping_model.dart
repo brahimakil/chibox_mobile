@@ -97,6 +97,11 @@ class ShippingItemResult {
   final double? pricePerKg; // For air shipping
   final double? pricePerCbm; // For sea shipping
   final double? cbm; // Cubic meters
+  
+  // Category Surcharge data (percentage of product price added to shipping)
+  final double? surchargePercent;
+  final double? surchargeAmount;
+  final double? baseShippingCost; // Shipping cost before surcharge
 
   const ShippingItemResult({
     required this.productId,
@@ -115,6 +120,9 @@ class ShippingItemResult {
     this.pricePerKg,
     this.pricePerCbm,
     this.cbm,
+    this.surchargePercent,
+    this.surchargeAmount,
+    this.baseShippingCost,
   });
 
   factory ShippingItemResult.fromJson(Map<String, dynamic> json) {
@@ -166,6 +174,24 @@ class ShippingItemResult {
       weightKg = _parseDouble(json['weight_kg']);
     }
     
+    // Parse surcharge data - check both top-level and nested in details object
+    double? surchargePercent, surchargeAmount, baseShippingCost;
+    
+    // First check top-level (new format from calculateForCart)
+    surchargePercent = _parseDouble(json['surcharge_percent']);
+    surchargeAmount = _parseDouble(json['surcharge_amount']);
+    baseShippingCost = _parseDouble(json['base_shipping_cost']);
+    
+    // Fallback to details object (calculateFromDimensions raw response format)
+    if (surchargePercent == null) {
+      final details = json['details'] as Map<String, dynamic>?;
+      if (details != null) {
+        surchargePercent = _parseDouble(details['surcharge_percent']);
+        surchargeAmount = _parseDouble(details['surcharge_amount']);
+        baseShippingCost = _parseDouble(details['base_shipping_cost']);
+      }
+    }
+    
     return ShippingItemResult(
       productId: json['product_id'] is int
           ? json['product_id']
@@ -191,6 +217,9 @@ class ShippingItemResult {
       pricePerKg: _parseDouble(json['price_per_kg']),
       pricePerCbm: _parseDouble(json['price_per_cbm']),
       cbm: _parseDouble(json['cbm']),
+      surchargePercent: surchargePercent,
+      surchargeAmount: surchargeAmount,
+      baseShippingCost: baseShippingCost,
     );
   }
   
@@ -542,6 +571,112 @@ class ShippingMethodComparison {
   double? getCostForProduct(int productId) {
     final item = items.where((i) => i.productId == productId).firstOrNull;
     return item?.totalCost;
+  }
+  
+  /// Get total surcharge amount across all items
+  double get totalSurchargeAmount {
+    return items.fold(0.0, (sum, item) => sum + (item.surchargeAmount ?? 0.0));
+  }
+  
+  /// Check if any items have a surcharge
+  bool get hasSurcharge {
+    return items.any((item) => (item.surchargePercent ?? 0) > 0);
+  }
+  
+  /// Get list of items with surcharges (for display)
+  List<ShippingItemResult> get itemsWithSurcharge {
+    return items.where((item) => (item.surchargePercent ?? 0) > 0).toList();
+  }
+  
+  /// Get total CBM across all items
+  double get totalCbm {
+    return items.fold(0.0, (sum, item) => sum + ((item.cbm ?? 0.0) * item.quantity));
+  }
+  
+  /// Get unique CBM rates and their totals (for sea shipping)
+  /// Returns a map of {rate: totalCbmAtThatRate}
+  Map<double, double> get cbmBreakdownByRate {
+    final breakdown = <double, double>{};
+    for (final item in items) {
+      if (item.pricePerCbm != null && item.cbm != null) {
+        final rate = item.pricePerCbm!;
+        final itemCbm = item.cbm! * item.quantity;
+        breakdown[rate] = (breakdown[rate] ?? 0) + itemCbm;
+      }
+    }
+    return breakdown;
+  }
+  
+  /// Check if all items have the same CBM rate
+  bool get hasSingleCbmRate {
+    return cbmBreakdownByRate.keys.length <= 1;
+  }
+  
+  /// Get the single CBM rate (if all items share it), else null
+  double? get singlePricePerCbm {
+    final rates = cbmBreakdownByRate.keys.toList();
+    if (rates.length == 1) return rates.first;
+    return null;
+  }
+  
+  /// Get total weight across all items
+  double get totalWeightKg {
+    return items.fold(0.0, (sum, item) => sum + ((item.weightKg ?? 0.0) * item.quantity));
+  }
+  
+  /// Get unique weight rates and their totals (for air shipping)
+  /// Returns a map of {rate: totalWeightAtThatRate}
+  Map<double, double> get weightBreakdownByRate {
+    final breakdown = <double, double>{};
+    for (final item in items) {
+      if (item.pricePerKg != null && item.weightKg != null) {
+        final rate = item.pricePerKg!;
+        final itemWeight = item.weightKg! * item.quantity;
+        breakdown[rate] = (breakdown[rate] ?? 0) + itemWeight;
+      }
+    }
+    return breakdown;
+  }
+  
+  /// Check if all items have the same kg rate
+  bool get hasSingleKgRate {
+    return weightBreakdownByRate.keys.length <= 1;
+  }
+  
+  /// Get the single kg rate (if all items share it), else null
+  double? get singlePricePerKg {
+    final rates = weightBreakdownByRate.keys.toList();
+    if (rates.length == 1) return rates.first;
+    return null;
+  }
+  
+  /// Get surcharge breakdown by percentage
+  /// Returns a list of (percent, amount) for items with surcharges
+  List<({double percent, double amount, int productId})> get surchargeBreakdown {
+    final breakdown = <({double percent, double amount, int productId})>[];
+    for (final item in items) {
+      if (item.surchargePercent != null && item.surchargePercent! > 0 && item.surchargeAmount != null) {
+        breakdown.add((
+          percent: item.surchargePercent!,
+          amount: item.surchargeAmount!,
+          productId: item.productId,
+        ));
+      }
+    }
+    return breakdown;
+  }
+  
+  /// Check if all surcharge items have the same percentage
+  bool get hasSingleSurchargePercent {
+    final percents = surchargeBreakdown.map((e) => e.percent).toSet();
+    return percents.length <= 1;
+  }
+  
+  /// Get single surcharge percent if all items share it
+  double? get singleSurchargePercent {
+    final percents = surchargeBreakdown.map((e) => e.percent).toSet();
+    if (percents.length == 1) return percents.first;
+    return null;
   }
 }
 

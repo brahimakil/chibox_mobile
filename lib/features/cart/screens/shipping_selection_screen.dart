@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:provider/provider.dart';
+import '../../../core/models/cart_model.dart';
 import '../../../core/services/cart_service.dart';
 import '../../../core/services/shipping_service.dart';
 import '../../../core/services/api_service.dart';
@@ -192,8 +193,11 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cartService = context.watch<CartService>();
-    final subtotal = cartService.cartData?.subtotal ?? 0.0;
-    final tax = cartService.cartData?.totalTax ?? 0.0;
+    
+    // Calculate subtotal and tax for SELECTED items only
+    final selectedItems = _getSelectedItems(cartService);
+    final subtotal = _calculateSelectedSubtotal(selectedItems);
+    final tax = _calculateSelectedTax(selectedItems);
     final currency = cartService.items.isNotEmpty 
         ? cartService.items.first.currencySymbol 
         : '\$';
@@ -294,6 +298,28 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
     final seaCost = _comparison?.sea.totalCost ?? 0.0;
     final total = subtotal + tax + _selectedShippingCost;
     final isProcessing = _comparison?.hasProcessingItems == true;
+    
+    // Get surcharge info for the selected method
+    final selectedMethodComparison = _selectedMethod == 'air' 
+        ? _comparison?.air 
+        : (_selectedMethod == 'sea' ? _comparison?.sea : null);
+    final hasSurcharge = selectedMethodComparison?.hasSurcharge ?? false;
+    final totalSurcharge = selectedMethodComparison?.totalSurchargeAmount ?? 0.0;
+    final baseShipping = _selectedShippingCost - totalSurcharge;
+    final surchargeBreakdown = selectedMethodComparison?.surchargeBreakdown ?? [];
+    final hasSingleSurchargePercent = selectedMethodComparison?.hasSingleSurchargePercent ?? true;
+    final singleSurchargePercent = selectedMethodComparison?.singleSurchargePercent;
+    
+    // Get rate info for display - now properly handles multiple different rates
+    final totalCbm = selectedMethodComparison?.totalCbm ?? 0.0;
+    final cbmBreakdown = selectedMethodComparison?.cbmBreakdownByRate ?? {};
+    final hasSingleCbmRate = selectedMethodComparison?.hasSingleCbmRate ?? true;
+    final singlePricePerCbm = selectedMethodComparison?.singlePricePerCbm;
+    
+    final totalWeight = selectedMethodComparison?.totalWeightKg ?? 0.0;
+    final weightBreakdown = selectedMethodComparison?.weightBreakdownByRate ?? {};
+    final hasSingleKgRate = selectedMethodComparison?.hasSingleKgRate ?? true;
+    final singlePricePerKg = selectedMethodComparison?.singlePricePerKg;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -509,6 +535,187 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
                     ),
                   ],
                 ),
+                // Shipping rate details (show weight/CBM info)
+                if (_selectedMethod != null) ...[
+                  const SizedBox(height: 8),
+                  // For Air: show weight breakdown
+                  if (_selectedMethod == 'air') ...[
+                    if (hasSingleKgRate)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16),
+                        child: Text(
+                          'Weight: ${totalWeight.toStringAsFixed(2)} kg @ \$${singlePricePerKg?.toStringAsFixed(2) ?? '-'}/kg',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white38 : Colors.grey[500],
+                          ),
+                        ),
+                      )
+                    else
+                      // Multiple rates - show breakdown
+                      ...weightBreakdown.entries.map((entry) => Padding(
+                        padding: const EdgeInsets.only(left: 16, bottom: 2),
+                        child: Text(
+                          '${entry.value.toStringAsFixed(2)} kg @ \$${entry.key.toStringAsFixed(2)}/kg',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white38 : Colors.grey[500],
+                          ),
+                        ),
+                      )),
+                  ],
+                  // For Sea: show CBM breakdown
+                  if (_selectedMethod == 'sea') ...[
+                    if (hasSingleCbmRate)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16),
+                        child: Text(
+                          'CBM: ${totalCbm.toStringAsFixed(4)} @ \$${singlePricePerCbm?.toStringAsFixed(2) ?? '-'}/cbm',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white38 : Colors.grey[500],
+                          ),
+                        ),
+                      )
+                    else
+                      // Multiple rates - show breakdown per rate
+                      ...cbmBreakdown.entries.map((entry) => Padding(
+                        padding: const EdgeInsets.only(left: 16, bottom: 2),
+                        child: Text(
+                          '${entry.value.toStringAsFixed(4)} cbm @ \$${entry.key.toStringAsFixed(2)}/cbm',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white38 : Colors.grey[500],
+                          ),
+                        ),
+                      )),
+                    // Show minimum applied notice if base shipping is significantly higher than raw CBM calc
+                    // (tolerance of $1 to account for rounding vs actual minimum application)
+                    Builder(builder: (_) {
+                      final rawCbmCost = cbmBreakdown.entries.fold(0.0, (sum, e) => sum + (e.value * e.key));
+                      final difference = baseShipping - rawCbmCost;
+                      // Only show if minimum added at least $1 (not just rounding differences)
+                      if (difference > 1.0 && baseShipping > 0) {
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 16, top: 2),
+                          child: Text(
+                            '(\$2.00 min/item applied)',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontStyle: FontStyle.italic,
+                              color: isDark ? Colors.white30 : Colors.grey[400],
+                            ),
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }),
+                  ],
+                ],
+                // Category Surcharge breakdown (only show if there's a surcharge)
+                if (_selectedMethod != null && hasSurcharge) ...[
+                  const SizedBox(height: 8),
+                  // Base shipping cost
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16),
+                        child: Text(
+                          'Base Shipping',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.white38 : Colors.grey[500],
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '$currency${baseShipping.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.white38 : Colors.grey[500],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // Category surcharge row with highlight - show breakdown if different percentages
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: Colors.orange.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        // Header row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Iconsax.warning_2,
+                                  size: 14,
+                                  color: Colors.orange.shade700,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  hasSingleSurchargePercent
+                                      ? 'Category Surcharge (${singleSurchargePercent?.toStringAsFixed(0) ?? ''}%)'
+                                      : 'Category Surcharges',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.orange.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              '+$currency${totalSurcharge.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.orange.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Breakdown rows if multiple different percentages
+                        if (!hasSingleSurchargePercent) ...[
+                          const SizedBox(height: 4),
+                          ...surchargeBreakdown.map((item) => Padding(
+                            padding: const EdgeInsets.only(left: 20, top: 2),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Product #${item.productId} (${item.percent.toStringAsFixed(0)}%)',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.orange.shade600,
+                                  ),
+                                ),
+                                Text(
+                                  '+$currency${item.amount.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.orange.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
                 if (_selectedMethod != null) ...[
                   const SizedBox(height: 12),
                   const Divider(height: 1),
@@ -596,6 +803,26 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
         ],
       ),
     );
+  }
+
+  /// Get only the selected cart items
+  List<CartItem> _getSelectedItems(CartService cartService) {
+    if (widget.selectedCartItemIds == null || widget.selectedCartItemIds!.isEmpty) {
+      return cartService.items; // All items if none specified
+    }
+    return cartService.items
+        .where((item) => widget.selectedCartItemIds!.contains(item.id))
+        .toList();
+  }
+
+  /// Calculate subtotal for selected items only (without tax)
+  double _calculateSelectedSubtotal(List<CartItem> selectedItems) {
+    return selectedItems.fold(0.0, (sum, item) => sum + item.subtotal);
+  }
+
+  /// Calculate total tax for selected items
+  double _calculateSelectedTax(List<CartItem> selectedItems) {
+    return selectedItems.fold(0.0, (sum, item) => sum + item.taxAmount);
   }
 }
 

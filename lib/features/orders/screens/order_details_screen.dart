@@ -879,7 +879,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               Row(
                 children: [
                   Text(
-                    'Shipping',
+                    order.isShippingPaid && order.taxAmount > 0 ? 'Shipping & Tax' : 'Shipping',
                     style: TextStyle(
                       fontSize: 14,
                       color: isDark ? Colors.white70 : Colors.black54,
@@ -929,7 +929,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 ],
               ),
               Text(
-                '${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}',
+                order.isShippingPaid && order.taxAmount > 0
+                    ? '${order.currencySymbol}${(order.shippingAmount + order.taxAmount).toStringAsFixed(2)}'
+                    : '${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -939,8 +941,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          if (order.taxAmount > 0)
-            _buildSummaryRow('Tax', order.taxAmount, order.currencySymbol, isDark),
+          // Only show separate Tax row if shipping NOT yet paid
+          if (order.taxAmount > 0 && !order.isShippingPaid)
+            _buildSummaryRow('Tax (Due with Shipping)', order.taxAmount, order.currencySymbol, isDark),
           if (order.discountAmount > 0)
             _buildSummaryRow('Discount', -order.discountAmount, order.currencySymbol, isDark, isDiscount: true),
           const SizedBox(height: 12),
@@ -1075,6 +1078,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   Widget _buildShippingPaymentCard(OrderDetails order, bool isDark) {
     // If shipping is already paid, show a simple success indicator
     if (order.isShippingPaid) {
+      final paidAmount = order.shippingAmount + order.taxAmount;
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -1098,7 +1102,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Shipping Paid',
+                    'Shipping${order.taxAmount > 0 ? ' & Tax' : ''} Paid',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -1107,12 +1111,22 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)} • ${order.shippingMethodName}',
+                    '${order.currencySymbol}${paidAmount.toStringAsFixed(2)} • ${order.shippingMethodName}',
                     style: TextStyle(
                       fontSize: 14,
                       color: isDark ? Colors.white70 : Colors.black54,
                     ),
                   ),
+                  if (order.taxAmount > 0) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Shipping: ${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)} + Tax: ${order.currencySymbol}${order.taxAmount.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? Colors.white54 : Colors.black38,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1123,6 +1137,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     
     // If shipping is pending review (Admin hasn't confirmed yet)
     if (order.isShippingPendingReview) {
+      final dueAmount = order.shippingAmount + order.taxAmount;
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -1155,11 +1170,19 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Estimated: ${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}',
+                    'Estimated: ${order.currencySymbol}${dueAmount.toStringAsFixed(2)}',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Shipping: ${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}${order.taxAmount > 0 ? ' + Tax: ${order.currencySymbol}${order.taxAmount.toStringAsFixed(2)}' : ''}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? Colors.white54 : Colors.black38,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -1180,6 +1203,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     
     // If shipping is ready to pay (Admin confirmed, user can pay)
     if (order.isShippingReadyToPay) {
+      final dueAmount = order.shippingAmount + order.taxAmount;
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -1235,7 +1259,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}',
+                      '${order.currencySymbol}${dueAmount.toStringAsFixed(2)}',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -1243,9 +1267,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       ),
                     ),
                     Text(
-                      'Confirmed',
+                      'Shipping: ${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}${order.taxAmount > 0 ? ' + Tax' : ''}',
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.w500,
                         color: Colors.green,
                       ),
@@ -1261,7 +1285,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 onPressed: () => _initiateShippingPayment(order),
                 icon: const Icon(Iconsax.wallet_2, size: 20),
                 label: Text(
-                  'Pay Delivery ${order.currencySymbol}${order.shippingAmount.toStringAsFixed(2)}',
+                  'Pay ${order.currencySymbol}${dueAmount.toStringAsFixed(2)}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(

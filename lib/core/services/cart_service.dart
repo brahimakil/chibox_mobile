@@ -114,6 +114,9 @@ class CartService extends ChangeNotifier {
   }
 
   /// Add item to cart
+  /// Returns true on success, false on failure.
+  /// Sets _error with the error message on failure.
+  /// Special error: "VARIANT_STALE" means the variant ID is outdated and product needs refresh.
   Future<bool> addToCart({
     required int productId,
     int quantity = 1,
@@ -124,25 +127,33 @@ class CartService extends ChangeNotifier {
     // Setting it here would trigger the global cart loading overlay/spinner unnecessarily.
     
     // Helper for the add request
-    Future<ApiResponse> attemptAdd(int id) {
+    Future<ApiResponse> attemptAdd(int id, {int? vId}) {
       return _api.post(
         ApiConstants.addToCart,
         body: {
           'product_id': id,
           'quantity': quantity,
-          if (variantId != null) 'variant_id': variantId,
+          if (vId != null) 'variant_id': vId,
         },
       );
     }
 
     try {
-      var response = await attemptAdd(productId);
+      var response = await attemptAdd(productId, vId: variantId);
 
       if (!response.success) {
-        // Check if it might be a missing product (Tampi case)
-        // The error message is usually "Product not found" or similar.
-        // We'll try to "import" it by fetching details.
-        debugPrint('⚠️ Add to cart failed: ${response.message} (status: ${response.statusCode})');
+        final errorMessage = response.message ?? '';
+        debugPrint('⚠️ Add to cart failed: $errorMessage (status: ${response.statusCode})');
+        
+        // Check if it's a "Variant not found" error - this means the variant IDs are stale
+        // and the product needs to be re-fetched by the UI
+        if (errorMessage.toLowerCase().contains('variant not found')) {
+          debugPrint('⚠️ Variant ID is stale - product needs refresh');
+          _error = 'VARIANT_STALE';
+          notifyListeners();
+          return false;
+        }
+        
         debugPrint('⚠️ Attempting to import product details...');
         
         try {
@@ -167,11 +178,19 @@ class CartService extends ChangeNotifier {
               // Notify listeners about the ID change so UI can update
               _idUpdateController.add({'old': productId, 'new': localId});
 
-              // Retry add with the new local ID
-              response = await attemptAdd(localId);
+              // Retry add with the new local ID (keep same variantId - may still be valid)
+              response = await attemptAdd(localId, vId: variantId);
+              
+              // If still failing with variant error, signal stale
+              if (!response.success && (response.message ?? '').toLowerCase().contains('variant not found')) {
+                debugPrint('⚠️ Variant ID still stale after product import');
+                _error = 'VARIANT_STALE';
+                notifyListeners();
+                return false;
+              }
             } else {
               // Fallback to original ID if parsing fails
-              response = await attemptAdd(productId);
+              response = await attemptAdd(productId, vId: variantId);
             }
           }
         } catch (e) {
