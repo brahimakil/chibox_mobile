@@ -58,8 +58,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   // ValueNotifier for gallery images - allows dynamic updates
   final ValueNotifier<List<String>> _galleryImagesNotifier = ValueNotifier([]);
   
-  // Scroll-based title visibility
-  double _scrollOffset = 0;
+  // Scroll-based title visibility - use ValueNotifier to avoid full rebuilds
+  final ValueNotifier<double> _scrollOffsetNotifier = ValueNotifier(0);
   
   // Variants selection
   Map<String, String> _selectedOptions = {};
@@ -81,6 +81,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     _scrollController.dispose();
     _similarScrollController.dispose();
     _galleryImagesNotifier.dispose();
+    _scrollOffsetNotifier.dispose();
     super.dispose();
   }
 
@@ -111,6 +112,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       if (_product.categoryId != null) {
         debugPrint('🚀 PARALLEL FETCH: Starting similar products early (categoryId: ${_product.categoryId})');
         _fetchSimilarProducts();
+      } else {
+        // No categoryId - disable "Load More" button immediately
+        setState(() {
+          _isLoadingSimilar = false;
+          _hasMoreSimilar = false;
+        });
       }
       _fetchFullDetails();
     });
@@ -118,17 +125,21 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   
   void _onScroll() {
     if (!mounted) return;
-    final offset = _scrollController.offset;
-    if (offset != _scrollOffset) {
-      setState(() {
-        _scrollOffset = offset;
-      });
-    }
+    
+    // Update scroll offset without setState - ValueNotifier handles rebuilds efficiently
+    _scrollOffsetNotifier.value = _scrollController.offset;
 
     // Auto paginate when scrolled near bottom
-    if (_scrollController.position.pixels >= 
-        _scrollController.position.maxScrollExtent - 500) {
+    // INCREASED threshold from 500 to 800 for better UX
+    final pixels = _scrollController.position.pixels;
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    
+    // DEBUG: Uncomment to see scroll position
+    // debugPrint('📜 Scroll: pixels=$pixels, maxExtent=$maxExtent, threshold=${maxExtent - 800}');
+    
+    if (pixels >= maxExtent - 800) {
       if (_hasMoreSimilar && !_isLoadingMoreSimilar && !_isLoadingSimilar) {
+        debugPrint('🔄 Triggering pagination - scrolled to ${pixels.toInt()}/${maxExtent.toInt()}');
         _fetchSimilarProducts(loadMore: true);
       }
     }
@@ -138,14 +149,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   bool _similarFetchStarted = false;
   
   Future<void> _fetchSimilarProducts({bool loadMore = false}) async {
-    debugPrint('🔵 _fetchSimilarProducts called - loadMore: $loadMore, categoryId: ${_product.categoryId}, productId: ${_product.id}');
-    
     if (_product.categoryId == null) {
-      debugPrint('⚠️ No categoryId, skipping similar products fetch');
+      // No categoryId - relatedProducts from API will still show;
       if (mounted) {
         setState(() {
           _isLoadingSimilar = false;
           _isLoadingMoreSimilar = false;
+          _hasMoreSimilar = false; // Disable Load More button when no categoryId
         });
       }
       return;
@@ -155,11 +165,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       if (_isLoadingMoreSimilar || !_hasMoreSimilar) return;
       setState(() => _isLoadingMoreSimilar = true);
     } else {
-      // Guard against duplicate initial fetches (from parallel optimization)
-      if (_similarFetchStarted && _isLoadingSimilar) {
-        debugPrint('⏭️ Similar products fetch already in progress, skipping duplicate');
-        return;
-      }
+      // Guard against duplicate initial fetches
+      if (_similarFetchStarted && _isLoadingSimilar) return;
       _similarFetchStarted = true;
       
       // Reset scroll controller position when doing a fresh load
@@ -188,22 +195,19 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       final pagination = result['pagination'] as Map<String, dynamic>?;
       final hasNext = pagination?['has_next'] == true || products.length >= 10;
       
-      debugPrint('📦 Fetched ${products.length} products from category ${_product.categoryId} (page: $page)');
-      
-      // Filter out the current product AND products already in relatedProducts
+      // Filter out duplicates
       final relatedIds = _product.relatedProducts?.map((p) => p.id).toSet() ?? <int>{};
-      var similar = products.where((p) => p.id != _product.id && !relatedIds.contains(p.id)).toList();
-      debugPrint('📦 After filtering: ${similar.length} similar products (removed current product ${_product.id} and ${relatedIds.length} related products)');
+      final existingSimilarIds = _similarProducts.map((p) => p.id).toSet();
+      var similar = products.where((p) => 
+        p.id != _product.id && 
+        !relatedIds.contains(p.id) &&
+        !existingSimilarIds.contains(p.id)
+      ).toList();
       
-      // Shuffle similar products using current product ID as seed for variety
-      // Different product IDs will produce different shuffle orders
-      // Adding timestamp component so revisiting same product shows different order
-      final shuffleSeed = _product.id ^ DateTime.now().millisecondsSinceEpoch ~/ 60000; // Changes every minute
-      similar.shuffle(Random(shuffleSeed));
-      debugPrint('🔀 Shuffled similar products with seed: $shuffleSeed');
+      // Shuffle for variety
+      similar.shuffle(Random(_product.id ^ DateTime.now().millisecondsSinceEpoch ~/ 60000));
       
       if (mounted) {
-        debugPrint('✅ Mounted, updating state with ${similar.length} similar products');
         setState(() {
           if (loadMore) {
             _similarProducts.addAll(similar);
@@ -211,15 +215,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           } else {
             _similarProducts = similar;
           }
-          _hasMoreSimilar = hasNext;
+          _hasMoreSimilar = hasNext && similar.isNotEmpty;
           _isLoadingSimilar = false;
           _isLoadingMoreSimilar = false;
         });
-      } else {
-        debugPrint('⚠️ Widget not mounted, skipping state update');
       }
     } catch (e) {
-      debugPrint('❌ Error fetching similar products: $e');
       if (mounted) {
         setState(() {
           _isLoadingSimilar = false;
@@ -332,32 +333,22 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   Future<void> _fetchFullDetails({bool forceRefresh = false}) async {
     setState(() => _isLoading = true);
     final productService = Provider.of<ProductService>(context, listen: false);
-    debugPrint('🔍 Fetching full details for product ${_product.id}${forceRefresh ? ' (FORCE REFRESH)' : ''}');
-    debugPrint('📦 Initial product - options: ${_product.options?.length ?? 'null'}, variants: ${_product.variants?.length ?? 'null'}');
     final fullProduct = await productService.getProductDetails(_product.id, forceRefresh: forceRefresh);
     
     if (mounted && fullProduct != null) {
-      debugPrint('✅ Full product loaded - id: ${fullProduct.id}, categoryId: ${fullProduct.categoryId}, relatedProducts: ${fullProduct.relatedProducts?.length ?? 0}');
-      debugPrint('📋 Full product - options: ${fullProduct.options?.length ?? 'null'}, variants: ${fullProduct.variants?.length ?? 'null'}');
-      
       // Check WishlistHelper's local cache for the correct isLiked state
-      // This cache is always in sync with local state, unlike HomeService
-      // which may not contain products accessed from cart
       final cachedLikeState = WishlistHelper.getLikeState(fullProduct.id);
       
       // Shuffle related products for variety each time user views a product
       Product productToSet = fullProduct;
       if (fullProduct.relatedProducts != null && fullProduct.relatedProducts!.isNotEmpty) {
         final shuffledRelated = List<Product>.from(fullProduct.relatedProducts!);
-        // Use timestamp-based seed so each visit shows different order
         shuffledRelated.shuffle(Random(DateTime.now().millisecondsSinceEpoch));
         productToSet = fullProduct.copyWith(relatedProducts: shuffledRelated);
-        debugPrint('🔀 Shuffled ${shuffledRelated.length} related products');
       }
       
       setState(() {
         // Use cached isLiked state if available (it's the most recent local truth)
-        // Otherwise use the API response
         _product = cachedLikeState != null
             ? productToSet.copyWith(isLiked: cachedLikeState)
             : productToSet;
@@ -373,20 +364,22 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       // Update gallery images notifier so open gallery gets updated images
       _galleryImagesNotifier.value = _getAllImages();
       
-      // OPTIMIZATION: Only fetch similar products here if we didn't have categoryId earlier
-      // (parallel fetch was already started in initState if categoryId was available)
-      if (widget.product.categoryId == null && _product.categoryId != null) {
-        debugPrint('🔄 SEQUENTIAL FETCH: Fetching similar products now (categoryId was null before)');
+      // Fetch similar products if we now have categoryId
+      if (_product.categoryId != null && !_similarFetchStarted) {
+        debugPrint('🔄 Fetching similar products after full details (categoryId: ${_product.categoryId})');
         _fetchSimilarProducts();
-      } else {
-        debugPrint('✅ Similar products already fetching in parallel (started in initState)');
+      } else if (_product.categoryId == null) {
+        // Still no categoryId even after full details - disable Load More
+        debugPrint('⚠️ No categoryId even after full details, disabling pagination');
+        setState(() {
+          _hasMoreSimilar = false;
+        });
       }
     } else {
-      debugPrint('⚠️ Failed to load full product details for product ${_product.id}');
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _isLoadingSimilar = false; // Also stop loading similar since we can't get product details
+          _isLoadingSimilar = false;
         });
       }
     }
@@ -947,6 +940,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   }
 
   Widget _buildRelatedProducts() {
+    // Wrap in RepaintBoundary to isolate repaints from rest of page
+    return RepaintBoundary(
+      child: _buildRelatedProductsContent(),
+    );
+  }
+  
+  Widget _buildRelatedProductsContent() {
     // Combine relatedProducts (from API, 6 items) with similarProducts (from pagination)
     // Start with relatedProducts, then add similarProducts excluding duplicates
     final List<Product> productsToShow = [];
@@ -970,11 +970,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       }
     }
     
-    debugPrint('🔄 Building related products - relatedProducts: ${_product.relatedProducts?.length ?? 0}, similarProducts: ${_similarProducts.length}, isLoading: $_isLoadingSimilar, productsToShow: ${productsToShow.length}, categoryId: ${_product.categoryId}');
-    
     // Show skeleton while loading even if productsToShow is empty
     if (productsToShow.isEmpty && !_isLoadingSimilar) {
-      debugPrint('⚠️ No related products to show and not loading - returning empty');
       return const SizedBox.shrink();
     }
     
@@ -1047,9 +1044,35 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   );
                 },
               ),
-              // Auto-loading trigger space at bottom
-               if (_hasMoreSimilar && productsToShow.isNotEmpty && !_isLoadingMoreSimilar)
-                 const SizedBox(height: 50),
+              // Loading indicator or Load More button
+              if (_isLoadingMoreSimilar)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.primary500,
+                      ),
+                    ),
+                  ),
+                )
+              else if (_hasMoreSimilar && productsToShow.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: TextButton.icon(
+                      onPressed: () => _fetchSimilarProducts(loadMore: true),
+                      icon: const Icon(Icons.expand_more, size: 20),
+                      label: const Text('Load More'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary500,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         const SizedBox(height: 24),
@@ -1503,274 +1526,300 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             child: Column(
               children: [
                 Expanded(
-                  child: CustomScrollView(
-                controller: _scrollController,
-                slivers: [
-                  // App Bar & Image Carousel
-                  SliverAppBar(
-                    expandedHeight: 300,
-                    pinned: true,
-                    backgroundColor: isDark ? DarkThemeColors.surface : LightThemeColors.surface,
-                    // Title that appears when scrolled
-                    title: AnimatedOpacity(
-                      opacity: _scrollOffset > 200 ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: GestureDetector(
-                        onTap: () {
-                          _scrollController.animateTo(
-                            0,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOutCubic,
-                          );
-                        },
-                        child: Text(
-                          _product.name,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                    centerTitle: true,
-                    titleSpacing: 0,
-                    leading: Container(
-                      margin: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: _scrollOffset > 200 
-                            ? Colors.transparent 
-                            : (isDark ? Colors.black54 : Colors.white70),
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        icon: Icon(
-                          Icons.arrow_back_ios_new, 
-                          size: 18, 
-                          color: isDark ? Colors.white : Colors.black,
-                        ),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ),
-                    actions: [
-                      Container(
-                        margin: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: _scrollOffset > 200 
-                              ? Colors.transparent 
-                              : (isDark ? Colors.black54 : Colors.white70),
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: Icon(
-                            _product.isLiked ? Iconsax.heart5 : Iconsax.heart,
-                            color: _product.isLiked ? Colors.red : (isDark ? Colors.white : Colors.black),
-                            size: 20,
-                          ),
-                            onPressed: () async {
-                              final success = await WishlistHelper.toggleFavorite(
-                                context, 
-                                _product.id, 
-                                currentIsLiked: _product.isLiked
-                              );
-                              
-                              if (success) {
-                                setState(() {
-                                  _product = _product.copyWith(isLiked: !_product.isLiked);
-                                });
-                              }
-                          },
-                        ),
-                      ),
-                    ],
-                    flexibleSpace: FlexibleSpaceBar(
-                      background: Stack(
-                        alignment: Alignment.bottomCenter,
-                        children: [
-                          CarouselSlider(
-                            carouselController: _carouselController,
-                            options: CarouselOptions(
-                              height: 320, // Reduced height
-                              viewportFraction: 1.0,
-                              enableInfiniteScroll: false,
-                              onPageChanged: (index, reason) {
-                                setState(() => _currentImageIndex = index);
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      if (notification is ScrollUpdateNotification) {
+                        final metrics = notification.metrics;
+                        // Trigger pagination when within 300px of bottom
+                        if (metrics.pixels >= metrics.maxScrollExtent - 300) {
+                          if (_hasMoreSimilar && !_isLoadingMoreSimilar && !_isLoadingSimilar) {
+                            debugPrint('🔄 NotificationListener: Triggering pagination at ${metrics.pixels.toInt()}/${metrics.maxScrollExtent.toInt()}');
+                            _fetchSimilarProducts(loadMore: true);
+                          }
+                        }
+                      }
+                      return false; // Don't consume the notification
+                    },
+                    child: CustomScrollView(
+                      controller: _scrollController,
+                      slivers: [
+                        // App Bar & Image Carousel
+                        ValueListenableBuilder<double>(
+                          valueListenable: _scrollOffsetNotifier,
+                          builder: (context, scrollOffset, child) {
+                            return SliverAppBar(
+                          expandedHeight: 300,
+                          pinned: true,
+                          backgroundColor: isDark ? DarkThemeColors.surface : LightThemeColors.surface,
+                          // Title that appears when scrolled
+                          title: AnimatedOpacity(
+                            opacity: scrollOffset > 200 ? 1.0 : 0.0,
+                            duration: const Duration(milliseconds: 200),
+                            child: GestureDetector(
+                              onTap: () {
+                                _scrollController.animateTo(
+                                  0,
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOutCubic,
+                                );
                               },
-                            ),
-                            items: carouselImages.map((imageUrl) {
-                              return GestureDetector(
-                                onTap: () => _openFullScreenGallery(carouselImages.indexOf(imageUrl)),
-                                child: Hero(
-                                  tag: 'product_${_product.id}_$imageUrl',
-                                  child: CachedNetworkImage(
-                                    key: carouselImages.indexOf(imageUrl) == 0 ? _productImageKey : null,
-                                    imageUrl: imageUrl,
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    placeholder: (context, url) => Container(
-                                      color: Colors.grey[200],
-                                      child: Image.asset(
-                                        'assets/images/productfailbackorskeleton_loading.png',
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                    errorWidget: (context, url, error) => Image.asset(
-                                      'assets/images/productfailbackorskeleton_loading.png',
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
+                              child: Text(
+                                _product.displayName ?? _product.name,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : Colors.black87,
                                 ),
-                              );
-                            }).toList(),
-                          ),
-                          // Page Indicator
-                          if (carouselImages.length > 1)
-                            Positioned(
-                              bottom: 16,
-                              child: AnimatedSmoothIndicator(
-                                activeIndex: _currentImageIndex,
-                                count: carouselImages.length,
-                                effect: ExpandingDotsEffect(
-                                  dotHeight: 8,
-                                  dotWidth: 8,
-                                  activeDotColor: AppColors.primary500,
-                                  dotColor: Colors.white.withOpacity(0.5),
-                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Product Info
-                  SliverToBoxAdapter(
-                    child: Container(
-                      padding: const EdgeInsets.all(16), // Reduced padding
-                      decoration: BoxDecoration(
-                        color: isDark ? DarkThemeColors.background : LightThemeColors.background,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Price & Rating
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (_product.variants != null && _product.variants!.isNotEmpty && _selectedVariant == null)
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            'Starting from',
-                                            style: AppTypography.labelSmall(color: Colors.grey).copyWith(fontSize: 10),
-                                          ),
-                                          Text(
-                                            '${_product.currencySymbol}${_product.price.toStringAsFixed(2)}',
-                                            style: AppTypography.headingSmall( // Reduced from Medium
-                                              color: AppColors.primary500,
+                          ),
+                          centerTitle: true,
+                          titleSpacing: 0,
+                          leading: Container(
+                            margin: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: scrollOffset > 200 
+                                  ? Colors.transparent 
+                                  : (isDark ? Colors.black54 : Colors.white70),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: Icon(
+                                Icons.arrow_back_ios_new, 
+                                size: 18, 
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ),
+                          actions: [
+                            Container(
+                              margin: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: scrollOffset > 200 
+                                    ? Colors.transparent 
+                                    : (isDark ? Colors.black54 : Colors.white70),
+                                shape: BoxShape.circle,
+                              ),
+                              child: IconButton(
+                                icon: Icon(
+                                  _product.isLiked ? Iconsax.heart5 : Iconsax.heart,
+                                  color: _product.isLiked ? Colors.red : (isDark ? Colors.white : Colors.black),
+                                  size: 20,
+                                ),
+                                onPressed: () async {
+                                  final success = await WishlistHelper.toggleFavorite(
+                                    context, 
+                                    _product.id, 
+                                    currentIsLiked: _product.isLiked
+                                  );
+                                  
+                                  if (success) {
+                                    setState(() {
+                                      _product = _product.copyWith(isLiked: !_product.isLiked);
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                          flexibleSpace: FlexibleSpaceBar(
+                            background: Stack(
+                              alignment: Alignment.bottomCenter,
+                              children: [
+                                CarouselSlider(
+                                  carouselController: _carouselController,
+                                  options: CarouselOptions(
+                                    height: 320,
+                                    viewportFraction: 1.0,
+                                    enableInfiniteScroll: false,
+                                    onPageChanged: (index, reason) {
+                                      setState(() => _currentImageIndex = index);
+                                    },
+                                  ),
+                                  items: carouselImages.map((imageUrl) {
+                                    return GestureDetector(
+                                      onTap: () => _openFullScreenGallery(carouselImages.indexOf(imageUrl)),
+                                      child: Hero(
+                                        tag: 'product_${_product.id}_$imageUrl',
+                                        child: CachedNetworkImage(
+                                          key: carouselImages.indexOf(imageUrl) == 0 ? _productImageKey : null,
+                                          imageUrl: imageUrl,
+                                          fit: BoxFit.cover,
+                                          width: double.infinity,
+                                          placeholder: (context, url) => Container(
+                                            color: Colors.grey[200],
+                                            child: Image.asset(
+                                              'assets/images/productfailbackorskeleton_loading.png',
+                                              fit: BoxFit.cover,
                                             ),
                                           ),
-                                        ],
-                                      )
-                                    else
-                                      Text(
-                                        '${_product.currencySymbol}${(_selectedVariant?.price ?? _product.price).toStringAsFixed(2)}',
-                                        style: AppTypography.headingSmall( // Reduced from Medium
-                                          color: AppColors.primary500,
+                                          errorWidget: (context, url, error) => Image.asset(
+                                            'assets/images/productfailbackorskeleton_loading.png',
+                                            fit: BoxFit.cover,
+                                          ),
                                         ),
                                       ),
-                                    if (_product.originalPrice != null && _product.originalPrice! > (_selectedVariant?.price ?? _product.price))
-                                      Text(
-                                        '${_product.currencySymbol}${_product.originalPrice!.toStringAsFixed(2)}',
-                                        style: AppTypography.bodySmall( // Reduced from Medium
-                                          color: Colors.grey,
-                                        ).copyWith(decoration: TextDecoration.lineThrough),
+                                    );
+                                  }).toList(),
+                                ),
+                                // Page Indicator
+                                if (carouselImages.length > 1)
+                                  Positioned(
+                                    bottom: 16,
+                                    child: AnimatedSmoothIndicator(
+                                      activeIndex: _currentImageIndex,
+                                      count: carouselImages.length,
+                                      effect: ExpandingDotsEffect(
+                                        dotHeight: 8,
+                                        dotWidth: 8,
+                                        activeDotColor: AppColors.primary500,
+                                        dotColor: Colors.white.withOpacity(0.5),
                                       ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary500.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                          },
+                        ),
+
+                        // Product Info
+                        SliverToBoxAdapter(
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: isDark ? DarkThemeColors.background : LightThemeColors.background,
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Price & Rating
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(Iconsax.star1, size: 14, color: Colors.orange),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _product.rating?.toStringAsFixed(1) ?? '0.0',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          if (_product.variants != null && _product.variants!.isNotEmpty && _selectedVariant == null)
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Starting from',
+                                                  style: AppTypography.labelSmall(color: Colors.grey).copyWith(fontSize: 10),
+                                                ),
+                                                Text(
+                                                  '${_product.currencySymbol}${_product.price.toStringAsFixed(2)}',
+                                                  style: AppTypography.headingSmall(
+                                                    color: AppColors.primary500,
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          else
+                                            Text(
+                                              '${_product.currencySymbol}${(_selectedVariant?.price ?? _product.price).toStringAsFixed(2)}',
+                                              style: AppTypography.headingSmall(
+                                                color: AppColors.primary500,
+                                              ),
+                                            ),
+                                          if (_product.originalPrice != null && _product.originalPrice! > (_selectedVariant?.price ?? _product.price))
+                                            Text(
+                                              '${_product.currencySymbol}${_product.originalPrice!.toStringAsFixed(2)}',
+                                              style: AppTypography.bodySmall(
+                                                color: Colors.grey,
+                                              ).copyWith(decoration: TextDecoration.lineThrough),
+                                            ),
+                                        ],
+                                      ),
                                     ),
-                                    Text(
-                                      ' (${_product.reviewCount ?? 0})',
-                                      style: const TextStyle(color: Colors.grey, fontSize: 10),
+                                    const SizedBox(width: 16),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary500.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Iconsax.star1, size: 14, color: Colors.orange),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            _product.rating?.toStringAsFixed(1) ?? '0.0',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                          ),
+                                          Text(
+                                            ' (${_product.reviewCount ?? 0})',
+                                            style: const TextStyle(color: Colors.grey, fontSize: 10),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 12),
+
+                                // Title
+                                Text(
+                                  _product.displayName ?? _product.name,
+                                  style: AppTypography.bodyLarge(
+                                    color: isDark ? Colors.white : Colors.black,
+                                  ).copyWith(fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                                const SizedBox(height: 8),
+
+                                // Variant Preview
+                                _buildVariantPreview(isDark),
+
+                                // Description
+                                const Text(
+                                  'Description',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  _product.description ?? _product.displayName ?? 'No description available.',
+                                  style: AppTypography.bodyMedium(
+                                    color: isDark ? Colors.grey[400] : Colors.grey[700],
+                                  ).copyWith(fontSize: 13),
+                                ),
+                                const SizedBox(height: 20),
+
+                                // Detail Images
+                                _buildDetailImages(),
+
+                                // Specifications
+                                _buildSpecifications(isDark),
+
+                                // Related Products
+                                _buildRelatedProducts(),
+
+                                const SizedBox(height: 80), // Bottom padding for FAB
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 12),
-
-                          // Title
-                          Text(
-                            _product.displayName ?? _product.name,
-                            style: AppTypography.bodyLarge(
-                              color: isDark ? Colors.white : Colors.black,
-                            ).copyWith(fontWeight: FontWeight.bold, fontSize: 16), // Reduced size
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Variant Preview
-                          _buildVariantPreview(isDark),
-
-                          // Description
-                          const Text(
-                            'Description',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold), // Reduced size
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _product.description ?? _product.displayName ?? 'No description available.',
-                            style: AppTypography.bodyMedium( // Reduced from Large
-                              color: isDark ? Colors.grey[400] : Colors.grey[700],
-                            ).copyWith(fontSize: 13),
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Detail Images
-                          _buildDetailImages(),
-
-                          // Specifications
-                          _buildSpecifications(isDark),
-
-                          // Related Products
-                          _buildRelatedProducts(),
-
-                          const SizedBox(height: 80), // Bottom padding for FAB
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            
-            // Bottom Action Bar
-            Container(
+          ),
+          // Bottom Action Bar
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: isDark ? DarkThemeColors.surface : LightThemeColors.surface,
@@ -1783,14 +1832,14 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 ],
               ),
               child: SafeArea(
-                top: false, // Don't add top padding
+                top: false,
                 child: Row(
                   children: [
                     // Cart Icon with Badge
                     GestureDetector(
                       onTap: _isAddingToCart ? null : () {
                         final navProvider = Provider.of<NavigationProvider>(context, listen: false);
-                        navProvider.requestCloseSearch(); // Close any active search overlay
+                        navProvider.requestCloseSearch();
                         navProvider.setIndex(3);
                         Navigator.of(context).popUntil((route) => route.isFirst);
                       },
@@ -1848,16 +1897,14 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+          AddToCartAnimation(
+            key: _addToCartAnimationKey,
+            cartKey: _cartButtonKey,
+            createOverlayEntry: (key) {},
+          ),
+        ],
       ),
-      AddToCartAnimation(
-        key: _addToCartAnimationKey,
-        cartKey: _cartButtonKey,
-        createOverlayEntry: (key) {},
-      ),
-    ],
-    ),
     );
   }
 }

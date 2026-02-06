@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:lottie/lottie.dart';
 import '../../../core/services/home_service.dart';
 import '../../../core/services/category_service.dart';
 import '../../../core/services/cart_service.dart';
@@ -43,29 +44,43 @@ class _SplashScreenState extends State<SplashScreen> {
     _wishlistService = context.read<WishlistService>();
     _notificationService = context.read<NotificationService>();
     
-    // PRIORITY 1: Fetch SPLASH AD FIRST (fast, small request)
-    // Home data loads in BACKGROUND while splash ad is showing
-    _splashAd = await _splashAdService.getActiveSplashAd();
+    // TEMPORARILY HARDCODED: Use local video asset instead of fetching from server
+    _splashAd = SplashAdModel(
+      id: 0,
+      title: 'ChiHelo Intro',
+      mediaType: 'video',
+      mediaUrl: 'assets/animations/vidforchihelo.mp4', // Local asset
+      linkType: 'none',
+      skipDuration: 3,
+      totalDuration: 10,
+    );
     
-    debugPrint('✅ Splash ad check complete: ${_splashAd != null ? "YES" : "NO"}');
+    debugPrint('✅ Splash ad ready (using local video)');
 
     if (!mounted) return;
 
-    // If splash ad exists, show it IMMEDIATELY (image loads inside the screen)
-    // Start home data fetch in background
-    if (_splashAd != null) {
-      // Start home data loading in background (don't wait)
-      homeService.fetchHomeData().then((_) {
-        debugPrint('✅ Home data loaded in background!');
-      });
-      
-      _showSplashAd();
-    } else {
-      // No splash ad - wait for home data then go to home
-      await homeService.fetchHomeData();
+    // Wait for first frame to complete before navigating
+    // This prevents the "!_debugLocked" assertion error
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      _navigateToHome();
-    }
+      
+      // Let the Lottie animation play for a moment (1.5 seconds)
+      await Future.delayed(const Duration(milliseconds: 1500));
+      
+      if (!mounted) return;
+      
+      // Navigate to video IMMEDIATELY - don't wait for home data!
+      // Home data will load in background while video plays
+      _showSplashAd();
+      
+      // Start loading home data in background (non-blocking)
+      // This runs while the video is playing
+      homeService.fetchHomeData().then((_) {
+        debugPrint('✅ Home data loaded in background during video playback');
+      }).catchError((e) {
+        debugPrint('⚠️ Home data preload error (non-blocking): $e');
+      });
+    });
   }
 
   void _showSplashAd() {
@@ -77,7 +92,7 @@ class _SplashScreenState extends State<SplashScreen> {
         transitionsBuilder: (_, animation, __, child) {
           return FadeTransition(opacity: animation, child: child);
         },
-        transitionDuration: const Duration(milliseconds: 300),
+        transitionDuration: const Duration(milliseconds: 150), // Faster transition
       ),
     );
   }
@@ -120,10 +135,18 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Minimal loading screen while fetching splash ad from database
+    // Animated splash screen - shows briefly while setting up video screen
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
-      body: const SizedBox.shrink(), // Empty body - just wait for splash ad
+      body: Center(
+        child: Lottie.asset(
+          'assets/animations/ChiBox logo animation.json',
+          width: 200,
+          height: 200,
+          fit: BoxFit.contain,
+          repeat: false, // Don't repeat - we navigate immediately
+        ),
+      ),
     );
   }
 }

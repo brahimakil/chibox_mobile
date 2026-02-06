@@ -37,6 +37,7 @@ class FloatingHeader extends StatefulWidget {
   final List<ProductCategory> categories;
   final ProductCategory? selectedCategory;
   final void Function(ProductCategory?)? onCategorySelected;
+  final VoidCallback? onLogoTap;
   final Color? bannerColor; // Color from current banner for blur tint
 
   const FloatingHeader({
@@ -48,6 +49,7 @@ class FloatingHeader extends StatefulWidget {
     required this.categories,
     this.selectedCategory,
     this.onCategorySelected,
+    this.onLogoTap,
     this.bannerColor,
   });
 
@@ -73,6 +75,9 @@ class _FloatingHeaderState extends State<FloatingHeader> {
   bool _isLoading = false;
   final HomeService _homeService = HomeService();
   StreamSubscription? _wishlistSubscription;
+  
+  // ValueNotifier to trigger rebuilds in the overlay page
+  final ValueNotifier<int> _searchStateNotifier = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -247,7 +252,7 @@ class _FloatingHeaderState extends State<FloatingHeader> {
       _searchHistory.remove(query);
     });
     await prefs.setStringList('search_history', _searchHistory);
-    _overlayEntry?.markNeedsBuild();
+    _notifySearchStateChanged();
   }
 
   Future<void> _clearHistory() async {
@@ -256,7 +261,7 @@ class _FloatingHeaderState extends State<FloatingHeader> {
       _searchHistory.clear();
     });
     await prefs.setStringList('search_history', _searchHistory);
-    _overlayEntry?.markNeedsBuild();
+    _notifySearchStateChanged();
   }
 
   @override
@@ -269,6 +274,7 @@ class _FloatingHeaderState extends State<FloatingHeader> {
     _overlayFocusNode.dispose();
     _categoryScrollController.removeListener(_onCategoryScroll);
     _categoryScrollController.dispose();
+    _searchStateNotifier.dispose();
     super.dispose();
   }
 
@@ -282,6 +288,22 @@ class _FloatingHeaderState extends State<FloatingHeader> {
     }
   }
 
+  /// Clears search state (results, loading, etc.) and rebuilds overlay
+  void _clearSearchState() {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    setState(() {
+      _searchResults = [];
+      _categoryResults = [];
+      _similarCategoryResults = [];
+      _isLoading = false;
+    });
+    _notifySearchStateChanged();
+  }
+  
+  void _notifySearchStateChanged() {
+    _searchStateNotifier.value++;
+  }
+
   void _onSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     
@@ -292,7 +314,7 @@ class _FloatingHeaderState extends State<FloatingHeader> {
         _similarCategoryResults = [];
         _isLoading = false;
       });
-      _overlayEntry?.markNeedsBuild();
+      _notifySearchStateChanged();
       return;
     }
 
@@ -300,7 +322,7 @@ class _FloatingHeaderState extends State<FloatingHeader> {
     setState(() {
       _isLoading = true;
     });
-    _overlayEntry?.markNeedsBuild();
+    _notifySearchStateChanged();
     
     _debounce = Timer(const Duration(milliseconds: 300), () async {
       if (!mounted || query != _searchController.text) return;
@@ -315,7 +337,7 @@ class _FloatingHeaderState extends State<FloatingHeader> {
             _similarCategoryResults = response.similarResults;
             _isLoading = false;
           });
-          _overlayEntry?.markNeedsBuild();
+          _notifySearchStateChanged();
         }
       } catch (e) {
         debugPrint('Error searching categories: $e');
@@ -325,16 +347,15 @@ class _FloatingHeaderState extends State<FloatingHeader> {
             _similarCategoryResults = [];
             _isLoading = false;
           });
-          _overlayEntry?.markNeedsBuild();
+          _notifySearchStateChanged();
         }
       }
     });
   }
 
   void _showOverlay() {
+    // If already showing, just request focus
     if (_overlayEntry != null) {
-      _overlayEntry!.markNeedsBuild();
-      // Request focus again to ensure keyboard shows
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted && !_overlayFocusNode.hasFocus) {
           _overlayFocusNode.requestFocus();
@@ -343,147 +364,64 @@ class _FloatingHeaderState extends State<FloatingHeader> {
       return;
     }
 
-    final overlay = Overlay.of(context);
-
-    _overlayEntry = OverlayEntry(
-      builder: (context) => _buildSearchOverlay(context),
-    );
-
-    overlay.insert(_overlayEntry!);
+    // Mark that overlay is open
+    _overlayEntry = OverlayEntry(builder: (_) => const SizedBox.shrink()); // Placeholder to track state
     
-    // Request focus after overlay is shown to trigger keyboard
-    Future.delayed(const Duration(milliseconds: 150), () {
+    // Use Navigator.push for proper gesture handling (swipe back works)
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierDismissible: true,
+        barrierColor: Colors.transparent,
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return _SearchOverlayPage(
+            searchController: _searchController,
+            overlayFocusNode: _overlayFocusNode,
+            searchStateNotifier: _searchStateNotifier,
+            onClose: () {
+              _searchController.clear();
+              _clearSearchState();
+              _overlayFocusNode.unfocus();
+              _removeOverlay();
+              Navigator.of(context).pop();
+            },
+            onSearchChanged: _onSearchChanged,
+            onSubmitSearch: (query) async {
+              await _submitSearch(query);
+            },
+            buildSearchContent: _buildSearchContent,
+            pickImage: _pickImage,
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, -0.05),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              )),
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 250),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+      ),
+    ).then((_) {
+      // Ensure overlay state is cleared when route is popped
+      _overlayEntry = null;
+    });
+    
+    // Request focus after navigation
+    Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted) {
         _overlayFocusNode.requestFocus();
       }
     });
-  }
-
-  Widget _buildSearchOverlay(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () {
-        if (_overlayFocusNode.hasFocus) {
-          _overlayFocusNode.unfocus();
-        } else {
-          _removeOverlay();
-        }
-      },
-      child: Material(
-        color: Colors.black.withOpacity(0.5),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-            child: Column(
-              children: [
-                Material(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  elevation: 8,
-                  child: SafeArea(
-                    bottom: false,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).cardColor,
-                                borderRadius: BorderRadius.circular(22),
-                                border: Border.all(
-                                  color: AppColors.primary500.withOpacity(0.3),
-                                  width: 2,
-                                ),
-                              ),
-                              child: TextField(
-                                controller: _searchController,
-                                focusNode: _overlayFocusNode,
-                                autofocus: true,
-                                textInputAction: TextInputAction.search,
-                                onChanged: _onSearchChanged,
-                                textAlignVertical: TextAlignVertical.center,
-                                decoration: InputDecoration(
-                                  hintText: 'Search products...',
-                                  prefixIcon: const Icon(Iconsax.search_normal_1, color: AppColors.primary500, size: 20),
-                                  suffixIcon: _searchController.text.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(Icons.close, size: 20),
-                                          onPressed: () => _searchController.clear(),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                                        )
-                                      : null,
-                                  border: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                                  isDense: true,
-                                ),
-                                onSubmitted: (value) {
-                                  _submitSearch(value);
-                                  _removeOverlay();
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          // Camera button for visual search
-                          GestureDetector(
-                            onTap: () {
-                              _removeOverlay();
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const VisualSearchScreen(),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: AppColors.primary500.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: AppColors.primary500.withOpacity(0.3),
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: const Icon(
-                                Iconsax.camera,
-                                size: 20,
-                                color: AppColors.primary500,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          TextButton(
-                            onPressed: () {
-                              _searchController.clear();
-                              _overlayFocusNode.unfocus();
-                              _removeOverlay();
-                            },
-                            child: const Text('Cancel', style: TextStyle(color: AppColors.primary500, fontWeight: FontWeight.w600, fontSize: 13)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Container(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    child: _buildSearchContent(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ).animate()
-        .fadeIn(duration: 200.ms, curve: Curves.easeOut)
-        .slideY(begin: -0.05, end: 0, duration: 300.ms, curve: Curves.easeOutCubic);
   }
 
   Widget _buildSearchContent() {
@@ -739,17 +677,21 @@ class _FloatingHeaderState extends State<FloatingHeader> {
   }
 
   void _removeOverlay() {
-    _overlayEntry?.remove();
     _overlayEntry = null;
   }
 
   Future<void> _submitSearch(String query) async {
     _overlayFocusNode.unfocus();
-    _removeOverlay();
     
     if (query.trim().isEmpty) return;
 
     _addToHistory(query);
+
+    // Pop the search overlay first, then navigate to results
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    _removeOverlay();
 
     // Navigate directly - let the screen handle loading
     await Navigator.push(
@@ -1007,17 +949,10 @@ class _FloatingHeaderState extends State<FloatingHeader> {
     // Snap opacity to discrete values to reduce rebuilds (0, 0.25, 0.5, 0.75, 1.0)
     final snappedOpacity = (widget.opacity * 4).round() / 4.0;
     
-    final searchBarBgColor = Color.lerp(
-      Colors.black.withOpacity(0.3),
-      isDark ? const Color(0xFF2A2A2A) : Colors.white,
-      snappedOpacity,
-    )!;
+    // Search bar: white background with orange border
+    final searchBarBgColor = isDark ? const Color(0xFF2A2A2A) : Colors.white;
 
-    final searchIconColor = Color.lerp(
-      Colors.white70,
-      AppColors.neutral400,
-      snappedOpacity,
-    )!;
+    final searchIconColor = AppColors.primary500; // Orange icon color
 
     final boxShadow = widget.opacity > 0.5
         ? [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 2))]
@@ -1041,16 +976,19 @@ class _FloatingHeaderState extends State<FloatingHeader> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
               children: [
-                if (widget.opacity < 0.5)
-                  Padding(
+                // Chibox Logo - tap to go home
+                GestureDetector(
+                  onTap: widget.onLogoTap,
+                  child: Padding(
                     padding: const EdgeInsets.only(right: 10),
                     child: SvgPicture.asset(
-                      'assets/images/chiBox Nav logo 300x300.svg',
-                      width: 32,
-                      height: 32,
+                      'assets/animations/chibox logo box.svg',
+                      width: 36,
+                      height: 36,
                       fit: BoxFit.contain,
                     ),
                   ),
+                ),
 
                 Expanded(
                   child: GestureDetector(
@@ -1060,16 +998,17 @@ class _FloatingHeaderState extends State<FloatingHeader> {
                         decoration: BoxDecoration(
                           color: searchBarBgColor,
                           borderRadius: BorderRadius.circular(18),
-                          border: widget.opacity > 0.5
-                              ? Border.all(color: AppColors.neutral200, width: 1)
-                              : null,
+                          border: Border.all(
+                            color: AppColors.primary500.withOpacity(0.6), // Orange border
+                            width: 1.5,
+                          ),
                         ),
                         child: Row(
                           children: [
                             const SizedBox(width: 14),
                             Icon(Iconsax.search_normal_1, color: searchIconColor, size: 16),
                             const SizedBox(width: 8),
-                            Text('Search products...', style: TextStyle(color: searchIconColor, fontSize: 12)),
+                            Text('Search products...', style: TextStyle(color: AppColors.neutral400, fontSize: 12)),
                           ],
                         ),
                       ),
@@ -1185,17 +1124,12 @@ class _FloatingHeaderState extends State<FloatingHeader> {
         ),
       );
 
-    // Determine status bar icon brightness based on header opacity
-    // When opacity > 0.5, background is light/solid, so use dark icons
-    // When opacity <= 0.5, background is transparent over banner, use light icons
+    // Determine status bar icon brightness based on theme
+    // Since header is always white/light now, use dark icons in light mode
     final statusBarStyle = SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: widget.opacity > 0.5 
-          ? (isDark ? Brightness.light : Brightness.dark)
-          : Brightness.light, // Light icons when over banner
-      statusBarBrightness: widget.opacity > 0.5 
-          ? (isDark ? Brightness.dark : Brightness.light)
-          : Brightness.dark, // For iOS
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark, // Dark icons on white header
+      statusBarBrightness: isDark ? Brightness.dark : Brightness.light, // For iOS
     );
 
     // Apply blur when over banner (opacity < 1) - use RepaintBoundary for performance
@@ -1250,7 +1184,10 @@ class _FloatingIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = bgOpacity < 0.5 ? Colors.black.withOpacity(0.2) : Colors.transparent;
+    // Subtle orange tinted background when at top for visibility, transparent when scrolled
+    final bgColor = bgOpacity < 0.5 
+        ? AppColors.primary500.withOpacity(0.1) 
+        : Colors.transparent;
 
     return GestureDetector(
       onTap: onPressed,
@@ -1311,10 +1248,8 @@ class _CategoryTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // When not scrolled (opacity < 0.5), text is white (over banner)
-    // When scrolled (opacity >= 0.5), text follows the theme (white in dark, black in light)
-    final isScrolled = opacity >= 0.5;
-    final effectiveTextColor = isScrolled ? textColor : Colors.white;
+    // Text color follows the theme color passed from parent (dark on white header)
+    final effectiveTextColor = textColor;
     
     return GestureDetector(
       onTap: onTap,
@@ -1629,6 +1564,211 @@ class _ActionButton extends StatelessWidget {
           const SizedBox(width: 6),
           Text(label, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
         ],
+      ),
+    );
+  }
+}
+
+/// Search Overlay Page - A proper route for swipe-back gesture support
+class _SearchOverlayPage extends StatefulWidget {
+  final TextEditingController searchController;
+  final FocusNode overlayFocusNode;
+  final ValueNotifier<int> searchStateNotifier;
+  final VoidCallback onClose;
+  final Function(String) onSearchChanged;
+  final Future<void> Function(String) onSubmitSearch;
+  final Widget Function() buildSearchContent;
+  final VoidCallback pickImage;
+
+  const _SearchOverlayPage({
+    required this.searchController,
+    required this.overlayFocusNode,
+    required this.searchStateNotifier,
+    required this.onClose,
+    required this.onSearchChanged,
+    required this.onSubmitSearch,
+    required this.buildSearchContent,
+    required this.pickImage,
+  });
+
+  @override
+  State<_SearchOverlayPage> createState() => _SearchOverlayPageState();
+}
+
+class _SearchOverlayPageState extends State<_SearchOverlayPage> {
+  @override
+  void initState() {
+    super.initState();
+    widget.searchController.addListener(_onTextChanged);
+    widget.searchStateNotifier.addListener(_onSearchStateChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.searchController.removeListener(_onTextChanged);
+    widget.searchStateNotifier.removeListener(_onSearchStateChanged);
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    setState(() {}); // Rebuild to show/hide X button
+  }
+  
+  void _onSearchStateChanged() {
+    if (mounted) {
+      setState(() {}); // Rebuild when search state changes
+    }
+  }
+
+  void _clearSearch() {
+    widget.searchController.clear();
+    widget.onSearchChanged('');
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: true, // Allow swipe back
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          widget.searchController.clear();
+          widget.onSearchChanged('');
+          widget.overlayFocusNode.unfocus();
+        }
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () {
+          if (widget.overlayFocusNode.hasFocus) {
+            widget.overlayFocusNode.unfocus();
+          } else {
+            widget.onClose();
+          }
+        },
+        child: Material(
+          color: Colors.black.withOpacity(0.5),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Column(
+                children: [
+                  Material(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    elevation: 8,
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            // Back button
+                            GestureDetector(
+                              onTap: widget.onClose,
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary500.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Iconsax.arrow_left,
+                                  size: 20,
+                                  color: AppColors.primary500,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Container(
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).cardColor,
+                                  borderRadius: BorderRadius.circular(22),
+                                  border: Border.all(
+                                    color: AppColors.primary500.withOpacity(0.3),
+                                    width: 2,
+                                  ),
+                                ),
+                                child: TextField(
+                                  controller: widget.searchController,
+                                  focusNode: widget.overlayFocusNode,
+                                  autofocus: true,
+                                  textInputAction: TextInputAction.search,
+                                  onChanged: widget.onSearchChanged,
+                                  textAlignVertical: TextAlignVertical.center,
+                                  decoration: InputDecoration(
+                                    hintText: 'Search products...',
+                                    prefixIcon: const Icon(Iconsax.search_normal_1, color: AppColors.primary500, size: 20),
+                                    suffixIcon: widget.searchController.text.isNotEmpty
+                                        ? IconButton(
+                                            icon: const Icon(Icons.close, size: 20),
+                                            onPressed: _clearSearch,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                                          )
+                                        : null,
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                                    isDense: true,
+                                  ),
+                                  onSubmitted: (value) {
+                                    widget.onSubmitSearch(value);
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            // Camera button for visual search
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.pop(context);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const VisualSearchScreen(),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary500.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: AppColors.primary500.withOpacity(0.3),
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Iconsax.camera,
+                                  size: 20,
+                                  color: AppColors.primary500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {}, // Prevent taps from closing when tapping content
+                      child: Container(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        child: widget.buildSearchContent(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

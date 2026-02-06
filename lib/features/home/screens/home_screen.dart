@@ -544,16 +544,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ? 1.0 
                                 : (scrollOffset / _scrollThreshold).clamp(0.0, 1.0);
                     
-                    // Orange tint for header when at top (light orange in dark mode, strong orange in light mode)
-                    final orangeTint = isDark 
-                        ? const Color(0xFFFFB366) // Light orange for dark mode
-                        : const Color(0xFFFF6B00); // Strong orange for light mode
+                    // Clean white header design with orange accents
                     final brandColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
                     
-                    // When at top, use orange tint; when scrolled, use solid brand color
-                    final headerBgColor = Color.lerp(orangeTint.withOpacity(0.85), brandColor, opacity)!;
-                    // Icons white on orange, transition to dark/white based on theme when scrolled
-                    final iconColor = Color.lerp(Colors.white, isDark ? Colors.white : Colors.black87, opacity)!;
+                    // When at top, use semi-transparent white; when scrolled, use solid brand color
+                    final headerBgColor = Color.lerp(
+                      isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.95), 
+                      brandColor, 
+                      opacity
+                    )!;
+                    // Icons: dark on white background for better visibility
+                    final iconColor = Color.lerp(
+                      isDark ? Colors.white : Colors.black87, 
+                      isDark ? Colors.white : Colors.black87, 
+                      opacity
+                    )!;
 
                     return FloatingHeader(
                       headerBgColor: headerBgColor,
@@ -562,7 +567,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       opacity: opacity,
                       categories: homeService.categories,
                       selectedCategory: selectedCategory,
-                      bannerColor: orangeTint,
+                      bannerColor: AppColors.primary500, // Orange accent color for elements
                       onCategorySelected: (category) async {
                         if (category == null) {
                           // "All" selected - brief loading then show main categories
@@ -582,6 +587,26 @@ class _HomeScreenState extends State<HomeScreen> {
                           );
                           _selectedCategoryNotifier.value = fullCategory;
                           _isCategoriesLoadingNotifier.value = false;
+                        }
+                        
+                        // Scroll to top when category changes
+                        if (_scrollController.hasClients) {
+                          _scrollController.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                          );
+                        }
+                      },
+                      onLogoTap: () {
+                        // Clear category selection and scroll to top
+                        _selectedCategoryNotifier.value = null;
+                        if (_scrollController.hasClients) {
+                          _scrollController.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                          );
                         }
                       },
                     );

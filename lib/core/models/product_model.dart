@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 import '../constants/api_constants.dart';
 import '../utils/image_helper.dart';
 
@@ -69,23 +70,34 @@ class Product extends Equatable {
       return RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
     }
     
-    // Parse name with fallbacks - only use non-Chinese text
+    // Parse name with fallbacks - prioritize English text
+    // Priority: title_en > product_name (non-Chinese) > display_name (non-Chinese) > name (non-Chinese)
     String name = '';
-    if (json['product_name'] != null && json['product_name'].toString().trim().isNotEmpty) {
+    
+    // 1. First check title_en - this is the translated English name from backend
+    if (json['title_en'] != null && json['title_en'].toString().trim().isNotEmpty) {
+      final titleEn = json['title_en'].toString().trim();
+      if (!containsChinese(titleEn)) {
+        name = titleEn;
+      }
+    }
+    // 2. Then check product_name (only if non-Chinese)
+    if (name.isEmpty && json['product_name'] != null && json['product_name'].toString().trim().isNotEmpty) {
       final productName = json['product_name'].toString().trim();
       if (!containsChinese(productName)) {
         name = productName;
       }
     }
-    // Only fallback if name is still empty AND the fallback is non-Chinese
-    if (name.isEmpty && json['name'] != null && json['name'].toString().trim().isNotEmpty) {
-      final fallbackName = json['name'].toString().trim();
+    // 3. Then check display_name (only if non-Chinese)
+    if (name.isEmpty && json['display_name'] != null && json['display_name'].toString().trim().isNotEmpty) {
+      final fallbackName = json['display_name'].toString().trim();
       if (!containsChinese(fallbackName)) {
         name = fallbackName;
       }
     }
-    if (name.isEmpty && json['display_name'] != null && json['display_name'].toString().trim().isNotEmpty) {
-      final fallbackName = json['display_name'].toString().trim();
+    // 4. Finally check generic 'name' field (only if non-Chinese)
+    if (name.isEmpty && json['name'] != null && json['name'].toString().trim().isNotEmpty) {
+      final fallbackName = json['name'].toString().trim();
       if (!containsChinese(fallbackName)) {
         name = fallbackName;
       }
@@ -100,6 +112,21 @@ class Product extends Equatable {
       if (!containsChinese(dn)) {
         displayName = dn;
       }
+    }
+    // Check title_en as displayName fallback for related products
+    if (displayName == null && json['title_en'] != null && json['title_en'].toString().trim().isNotEmpty) {
+      final titleEn = json['title_en'].toString().trim();
+      if (!containsChinese(titleEn)) {
+        displayName = titleEn;
+      }
+    }
+    
+    // Parse originalName (Chinese) - check title_zh for related products
+    String? originalName;
+    if (json['original_name'] != null && json['original_name'].toString().trim().isNotEmpty) {
+      originalName = json['original_name'].toString().trim();
+    } else if (json['title_zh'] != null && json['title_zh'].toString().trim().isNotEmpty) {
+      originalName = json['title_zh'].toString().trim();
     }
     
     // Parse variants first so we can use them for price fallback
@@ -150,7 +177,7 @@ class Product extends Equatable {
       reviewCount: json['review_count'] as int?,
       categoryId: json['category_id'] as int?,
       productCode: json['product_code'] as String?,
-      originalName: json['original_name'] as String?,
+      originalName: originalName,
       videoUrl: json['video_url'] as String?,
       options: json['options'] != null
           ? (json['options'] as List)

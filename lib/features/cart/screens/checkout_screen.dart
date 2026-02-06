@@ -62,7 +62,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadDefaultAddress();
+      // Ensure cart has correct tax for the selected shipping method
+      _ensureCartTaxIsCorrect();
     });
+  }
+  
+  /// Ensure cart data has tax calculated for the selected shipping method
+  Future<void> _ensureCartTaxIsCorrect() async {
+    final cartService = context.read<CartService>();
+    // Silently refetch cart with shipping method to ensure tax is correct
+    await cartService.fetchCart(silent: true, shippingMethod: widget.shippingMethod);
   }
 
   Future<void> _loadDefaultAddress() async {
@@ -713,7 +722,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  isAir ? 'Estimated: 7-14 days' : 'Estimated: 30-45 days',
+                  isAir ? 'Estimated: 14-21 days' : 'Estimated: 45-60 days',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.white60 : Colors.grey[600],

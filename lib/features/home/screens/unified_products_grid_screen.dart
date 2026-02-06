@@ -99,7 +99,7 @@ class ProductGridConfig {
       enableFilters: true,
       showRelatedCategories: true, // Show categories for search
       emptyIcon: Iconsax.search_normal,
-      emptyMessage: 'No products found',
+      emptyMessage: 'No products found for "$query"',
     );
   }
 
@@ -882,7 +882,28 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
                 color: isDark ? Colors.white : Colors.black,
               ),
             ),
-            if (_totalProducts > 0 && !_isInitialLoading)
+            // Show search query and/or results count
+            if (widget.config.searchQuery != null && widget.config.searchQuery!.isNotEmpty) ...[
+              Text(
+                '"${widget.config.searchQuery}"',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.primary500,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (_totalProducts > 0 && !_isInitialLoading)
+                Text(
+                  '$_totalProducts results',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+            ] else if (_totalProducts > 0 && !_isInitialLoading)
               Text(
                 '$_totalProducts products found',
                 style: TextStyle(

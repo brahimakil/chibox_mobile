@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delete Account - Chibox by Brainkets</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            padding: 50px;
+            margin-bottom: 30px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 30px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 36px;
+            color: white;
+            font-weight: bold;
+        }
+
+        h1 {
+            color: #1a1a2e;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        h2 {
+            color: #667eea;
+            font-size: 1.5rem;
+            margin: 30px 0 15px;
+            padding-left: 15px;
+            border-left: 4px solid #764ba2;
+        }
+
+        h3 {
+            color: #444;
+            font-size: 1.15rem;
+            margin: 20px 0 10px;
+        }
+
+        p {
+            margin-bottom: 15px;
+            color: #555;
+        }
+
+        .warning-box {
+            background: linear-gradient(135deg, #fff3cd 0%, #fff9e6 100%);
+            border-left: 4px solid #ffc107;
+            padding: 20px 25px;
+            margin: 25px 0;
+            border-radius: 0 10px 10px 0;
+        }
+
+        .danger-box {
+            background: linear-gradient(135deg, #ffe6e6 0%, #fff0f0 100%);
+            border-left: 4px solid #dc3545;
+            padding: 20px 25px;
+            margin: 25px 0;
+            border-radius: 0 10px 10px 0;
+        }
+
+        .info-box {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            border-left: 4px solid #4caf50;
+            padding: 20px 25px;
+            margin: 25px 0;
+            border-radius: 0 10px 10px 0;
+        }
+
+        .steps {
+            counter-reset: step-counter;
+            list-style: none;
+            padding: 0;
+        }
+
+        .steps li {
+            counter-increment: step-counter;
+            padding: 20px 20px 20px 60px;
+            margin: 15px 0;
+            background: #f8f9fa;
+            border-radius: 10px;
+            position: relative;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .steps li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .data-retention-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .data-retention-table th,
+        .data-retention-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-retention-table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+        }
+
+        .data-retention-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .badge.deleted {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .badge.retained {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .btn {
+            display: inline-block;
+            background: white;
+            color: #667eea;
+            padding: 12px 30px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 15px;
+            transition: transform 0.3s, box-shadow 0.3s;
+            border: 2px solid #667eea;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn.primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+        }
+
+        .contact-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-top: 40px;
+            text-align: center;
+        }
+
+        .contact-section h2 {
+            color: white;
+            border-left: none;
+            padding-left: 0;
+        }
+
+        .contact-section p {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .contact-section a {
+            color: #fff;
+            text-decoration: underline;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 30px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .footer a {
+            color: white;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        ul {
+            margin: 15px 0 15px 30px;
+            color: #555;
+        }
+
+        li {
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .card {
+                padding: 30px 20px;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            h2 {
+                font-size: 1.3rem;
+            }
+
+            .steps li {
+                padding: 15px 15px 15px 50px;
+            }
+
+            .steps li::before {
+                left: 10px;
+                width: 25px;
+                height: 25px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <div class="logo">C</div>
+                <h1>Delete Your Account</h1>
+                <p style="color: #666; font-size: 0.95rem;">Chibox by Brainkets</p>
+            </div>
+
+            <div class="danger-box">
+                <strong>⚠️ Important Warning</strong><br>
+                Deleting your account is permanent and cannot be undone. All your data will be removed from our servers within 30 days.
+            </div>
+
+            <section>
+                <h2>How to Delete Your Chibox Account</h2>
+                <p>You can delete your account and all associated data directly from the Chibox mobile application. Follow these simple steps:</p>
+
+                <ol class="steps">
+                    <li>
+                        <strong>Open the Chibox App</strong><br>
+                        Launch the Chibox application on your mobile device
+                    </li>
+                    <li>
+                        <strong>Go to Your Profile</strong><br>
+                        Tap on the "Profile" icon in the bottom navigation bar
+                    </li>
+                    <li>
+                        <strong>Scroll Down</strong><br>
+                        Scroll to the bottom of your profile page
+                    </li>
+                    <li>
+                        <strong>Tap "Delete Account"</strong><br>
+                        Find and tap the red "Delete Account" button at the bottom of the page
+                    </li>
+                    <li>
+                        <strong>Confirm Deletion</strong><br>
+                        Read the confirmation message and tap "Delete" to confirm (Note: This action cannot be undone)
+                    </li>
+                </ol>
+
+                <div class="info-box">
+                    <strong>✉️ Alternative Method</strong><br>
+                    If you're unable to access the app, you can request account deletion by emailing us at <a href="mailto:privacy@brainkets.com" style="color: #4caf50; font-weight: 600;">privacy@brainkets.com</a> with your registered phone number or email address.
+                </div>
+            </section>
+
+            <section>
+                <h2>What Data Will Be Deleted?</h2>
+                <p>When you delete your account, the following data will be permanently removed:</p>
+
+                <table class="data-retention-table">
+                    <thead>
+                        <tr>
+                            <th>Data Type</th>
+                            <th>Action</th>
+                            <th>Timeline</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Personal Information</td>
+                            <td><span class="badge deleted">Deleted</span></td>
+                            <td>Within 30 days</td>
+                        </tr>
+                        <tr>
+                            <td>Name, Email, Phone Number</td>
+                            <td><span class="badge deleted">Deleted</span></td>
+                            <td>Within 30 days</td>
+                        </tr>
+                        <tr>
+                            <td>Profile Picture</td>
+                            <td><span class="badge deleted">Deleted</span></td>
+                            <td>Within 30 days</td>
+                        </tr>
+                        <tr>
+                            <td>Delivery Addresses</td>
+                            <td><span class="badge deleted">Deleted</span></td>
+                            <td>Within 30 days</td>
+                        </tr>
+                        <tr>
+                            <td>Order History</td>
+                            <td><span class="badge deleted">Deleted</span></td>
+                            <td>Within 30 days</td>
+                        </tr>
+                        <tr>
+                            <td>Payment Information</td>
+                            <td><span class="badge deleted">Deleted</span></td>
+                            <td>Immediately</td>
+                        </tr>
+                        <tr>
+                            <td>App Preferences & Settings</td>
+                            <td><span class="badge deleted">Deleted</span></td>
+                            <td>Within 30 days</td>
+                        </tr>
+                        <tr>
+                            <td>Messages & Support Tickets</td>
+                            <td><span class="badge deleted">Deleted</span></td>
+                            <td>Within 30 days</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section>
+                <h2>Data Retention for Legal Compliance</h2>
+                <p>While we delete most of your data, some information may be retained for legal, regulatory, or security purposes:</p>
+
+                <table class="data-retention-table">
+                    <thead>
+                        <tr>
+                            <th>Data Type</th>
+                            <th>Retention Period</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Transaction Records (anonymized)</td>
+                            <td><span class="badge retained">7 years</span></td>
+                            <td>Tax & accounting regulations</td>
+                        </tr>
+                        <tr>
+                            <td>Fraud Prevention Logs</td>
+                            <td><span class="badge retained">3 years</span></td>
+                            <td>Security & fraud prevention</td>
+                        </tr>
+                        <tr>
+                            <td>Legal Disputes Records</td>
+                            <td><span class="badge retained">As required</span></td>
+                            <td>Legal compliance</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="warning-box">
+                    <strong>📋 Note:</strong> Retained data is anonymized (cannot be linked back to you personally) and stored securely in accordance with applicable laws.
+                </div>
+            </section>
+
+            <section>
+                <h2>What Happens After Deletion?</h2>
+                <ul>
+                    <li>✅ You will be immediately logged out of the Chibox app</li>
+                    <li>✅ Your account will be deactivated and cannot be recovered</li>
+                    <li>✅ You will no longer receive notifications or promotional emails</li>
+                    <li>✅ All your personal data will be deleted within 30 days</li>
+                    <li>✅ Active orders will be canceled (if applicable)</li>
+                    <li>✅ Unused coupons and credits will be forfeited</li>
+                    <li>✅ You can create a new account in the future if you wish to use Chibox again</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Before You Delete</h2>
+                <p>Consider these alternatives if you're experiencing issues:</p>
+                <ul>
+                    <li><strong>Update your preferences:</strong> You can disable notifications and marketing emails in Settings without deleting your account</li>
+                    <li><strong>Contact support:</strong> Our support team can help resolve any issues you're facing</li>
+                    <li><strong>Take a break:</strong> You can simply stop using the app without deleting your account</li>
+                </ul>
+            </section>
+
+            <div class="contact-section">
+                <h2>Need Help?</h2>
+                <p>If you have questions about account deletion or need assistance, please contact us:</p>
+                <p>
+                    <strong>Brainkets - Chibox Support</strong><br>
+                    Privacy Inquiries: <a href="mailto:privacy@brainkets.com">privacy@brainkets.com</a><br>
+                    General Support: <a href="mailto:support@brainkets.com">support@brainkets.com</a>
+                </p>
+                <a href="mailto:privacy@brainkets.com" class="btn primary">📧 Contact Privacy Team</a>
+                <a href="privacy_policy.html" class="btn">📄 View Privacy Policy</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>© 2026 Brainkets. All rights reserved.</p>
+            <p>
+                <a href="privacy_policy.html">Privacy Policy</a> | 
+                <a href="mailto:support@brainkets.com">Contact Support</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        console.log('Delete Account page loaded on:', new Date().toLocaleDateString());
+    </script>
+</body>
+</html>

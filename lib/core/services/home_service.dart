@@ -660,14 +660,10 @@ class HomeService extends ChangeNotifier {
         queryParams['max_price'] = maxPrice;
       }
       
-      debugPrint('🔍 Search request: query="$query", page=$page, sortBy=$sortBy, minPrice=$minPrice, maxPrice=$maxPrice');
-      
       final response = await _api.get(
         ApiConstants.searchProducts,
         queryParams: queryParams,
       );
-
-      debugPrint('🔍 Search response: success=${response.success}, message=${response.message}');
 
       if (response.success && response.data != null) {
         final productsData = response.data!['products'] ?? response.data!['data'];
@@ -675,19 +671,15 @@ class HomeService extends ChangeNotifier {
         
         if (productsData != null && productsData is List) {
           final products = await compute(_parseProducts, productsData);
-          debugPrint('🔍 Search parsed ${products.length} products');
           return {
             'products': products,
             'has_next': pagination != null ? pagination['has_next'] ?? false : false,
-            'pagination': pagination, // Include full pagination for total count
+            'pagination': pagination,
           };
         }
-      } else {
-        debugPrint('❌ Search failed: ${response.message}');
       }
     } catch (e, stackTrace) {
       debugPrint('❌ Search error: $e');
-      debugPrint('📍 Stack trace: $stackTrace');
     }
     return {'products': <Product>[], 'has_next': false};
   }
@@ -764,7 +756,9 @@ class HomeService extends ChangeNotifier {
         // Extract converted URL for faster pagination
         final convertedUrl = meta?['converted_url'];
         if (convertedUrl != null) {
-          debugPrint('🔗 Got converted URL for pagination: ${convertedUrl.toString().substring(0, 50)}...');
+          final urlStr = convertedUrl.toString();
+          final previewLength = urlStr.length > 50 ? 50 : urlStr.length;
+          debugPrint('🔗 Got converted URL for pagination: ${urlStr.substring(0, previewLength)}...');
         }
         
         debugPrint('📦 Products data type: ${productsData.runtimeType}');

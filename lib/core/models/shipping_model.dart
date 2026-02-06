@@ -351,6 +351,7 @@ class ShippingComparison {
   final bool allItemsCalculated;
   final bool hasProcessingItems;
   final List<int> processingProductIds;
+  final double minimumShippingCost;
 
   const ShippingComparison({
     required this.air,
@@ -359,6 +360,7 @@ class ShippingComparison {
     required this.allItemsCalculated,
     this.hasProcessingItems = false,
     this.processingProductIds = const [],
+    this.minimumShippingCost = 0.50,
   });
 
   factory ShippingComparison.fromJson(Map<String, dynamic> json) {
@@ -389,6 +391,7 @@ class ShippingComparison {
       allItemsCalculated: data['all_items_calculated'] == true,
       hasProcessingItems: data['has_processing_items'] == true,
       processingProductIds: processingIds,
+      minimumShippingCost: (data['minimum_shipping_cost'] ?? 0.50).toDouble(),
     );
   }
 
@@ -401,6 +404,7 @@ class ShippingComparison {
       allItemsCalculated: false,
       hasProcessingItems: false,
       processingProductIds: const [],
+      minimumShippingCost: 0.50,
     );
   }
   
@@ -562,7 +566,7 @@ class ShippingMethodComparison {
       name: method == 'air' ? 'Air Shipping ✈️' : 'Sea Shipping 🚢',
       totalCost: 0.0,
       allCalculated: false,
-      estimatedDays: method == 'air' ? '7-14 days' : '30-45 days',
+      estimatedDays: method == 'air' ? '14-21 days' : '45-60 days',
       items: const [],
     );
   }

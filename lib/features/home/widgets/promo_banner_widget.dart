@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../core/models/coupon_model.dart';
 import '../../../core/services/coupon_service.dart';
 import '../../../core/theme/theme.dart';
-import '../../cart/screens/cart_screen.dart';
+import '../../deals/screens/deals_screen.dart';
 
 /// Promo banner widget that shows available coupons on home screen
 class PromoBannerWidget extends StatefulWidget {
@@ -191,10 +191,10 @@ class _PromoBannerWidgetState extends State<PromoBannerWidget> {
   }
 
   void _onTap(Coupon coupon) {
-    // Navigate to cart screen
+    // Navigate to deals screen to see and claim offers
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CartScreen()),
+      MaterialPageRoute(builder: (_) => const DealsScreen()),
     );
   }
 }

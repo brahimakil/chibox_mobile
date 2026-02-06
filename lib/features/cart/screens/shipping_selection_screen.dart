@@ -64,6 +64,8 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
       );
       
       if (mounted) {
+        String? autoSelectedMethod;
+        
         setState(() {
           _comparison = comparison;
           _isLoading = false;
@@ -76,13 +78,20 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
             // Select the cheaper option
             if (airCost <= seaCost) {
               _selectedMethod = 'air';
+              autoSelectedMethod = 'air';
               debugPrint('✈️ Auto-selected AIR shipping (\$${airCost.toStringAsFixed(2)} vs Sea \$${seaCost.toStringAsFixed(2)})');
             } else {
               _selectedMethod = 'sea';
+              autoSelectedMethod = 'sea';
               debugPrint('🚢 Auto-selected SEA shipping (\$${seaCost.toStringAsFixed(2)} vs Air \$${airCost.toStringAsFixed(2)})');
             }
           }
         });
+        
+        // If a method was auto-selected, fetch cart with tax for that method
+        if (autoSelectedMethod != null) {
+          _refetchCartWithTax(autoSelectedMethod!);
+        }
 
         // If there are still processing items, start polling
         if (comparison.hasProcessingItems) {
@@ -159,6 +168,28 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
     setState(() {
       _selectedMethod = method;
     });
+    
+    // Refetch cart with shipping method to get correct tax calculation
+    // Tax depends on shipping method (air vs sea have different tax rates)
+    _refetchCartWithTax(method);
+  }
+  
+  /// Refetch cart data with shipping method to calculate correct tax
+  Future<void> _refetchCartWithTax(String method) async {
+    debugPrint('🔄 TAX: Refetching cart with shipping_method=$method');
+    final cartService = context.read<CartService>();
+    await cartService.fetchCart(silent: true, shippingMethod: method);
+    
+    // Debug: Log what tax we got back
+    if (cartService.cartData != null) {
+      debugPrint('📊 TAX: Cart total_tax=${cartService.cartData!.totalTax}');
+      debugPrint('📊 TAX: Item count=${cartService.items.length}');
+      for (var item in cartService.items) {
+        debugPrint('   TAX: id=${item.id}, product=${item.productId}, categoryId=${item.categoryId}, qty=${item.quantity}, taxAmount=${item.taxAmount}');
+      }
+    } else {
+      debugPrint('❌ TAX: cartData is null after fetch!');
+    }
   }
 
   double get _selectedShippingCost {
@@ -341,7 +372,7 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
           Text(
             isProcessing
                 ? 'Calculating shipping costs for your items...'
-                : 'Shipping costs are calculated based on product weight and dimensions',
+                : 'These are approximate shipping costs,the exact shipping costs will be calculated after the goods arrive to our warehouse in China.',
             style: TextStyle(
               fontSize: 14,
               color: isDark ? Colors.white60 : Colors.grey[600],
@@ -404,7 +435,7 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
             icon: '✈️',
             title: 'Air Freight',
             subtitle: 'Fast delivery',
-            duration: _comparison?.air.estimatedDays ?? '7-14 days',
+            duration: _comparison?.air.estimatedDays ?? '14-21 days',
             cost: airCost,
             currency: currency,
             isSelected: _selectedMethod == 'air',
@@ -421,7 +452,7 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
             icon: '🚢',
             title: 'Sea Freight',
             subtitle: 'Economical shipping',
-            duration: _comparison?.sea.estimatedDays ?? '30-45 days',
+            duration: _comparison?.sea.estimatedDays ?? '45-60 days',
             cost: seaCost,
             currency: currency,
             isSelected: _selectedMethod == 'sea',
@@ -594,12 +625,14 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
                     Builder(builder: (_) {
                       final rawCbmCost = cbmBreakdown.entries.fold(0.0, (sum, e) => sum + (e.value * e.key));
                       final difference = baseShipping - rawCbmCost;
+                      // Get minimum from comparison model (fallback to 0.50 if not present)
+                      final minShipping = _comparison?.minimumShippingCost ?? 0.50;
                       // Only show if minimum added at least $1 (not just rounding differences)
                       if (difference > 1.0 && baseShipping > 0) {
                         return Padding(
                           padding: const EdgeInsets.only(left: 16, top: 2),
                           child: Text(
-                            '(\$2.00 min/item applied)',
+                            '(\$${minShipping.toStringAsFixed(2)} min/item applied)',
                             style: TextStyle(
                               fontSize: 10,
                               fontStyle: FontStyle.italic,

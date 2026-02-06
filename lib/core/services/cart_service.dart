@@ -67,22 +67,24 @@ class CartService extends ChangeNotifier {
   }
 
   /// Fetch cart items
-  Future<void> fetchCart({bool silent = false}) async {
+  /// @param silent - If true, uses _isUpdating instead of _isLoading
+  /// @param shippingMethod - Optional 'air' or 'sea' to calculate tax based on shipping method
+  Future<void> fetchCart({bool silent = false, String? shippingMethod}) async {
     // Cancel any pending fetch
     _fetchDebounce?.cancel();
 
     // If silent, we can debounce to avoid spamming the server
     if (silent) {
       _fetchDebounce = Timer(const Duration(milliseconds: 300), () async {
-        await _performFetch(silent: true);
+        await _performFetch(silent: true, shippingMethod: shippingMethod);
       });
     } else {
       // If not silent (user initiated or initial load), run immediately
-      await _performFetch(silent: false);
+      await _performFetch(silent: false, shippingMethod: shippingMethod);
     }
   }
 
-  Future<void> _performFetch({required bool silent}) async {
+  Future<void> _performFetch({required bool silent, String? shippingMethod}) async {
     if (!silent) {
       _isLoading = true;
     } else {
@@ -92,7 +94,19 @@ class CartService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await _api.get(ApiConstants.getCart);
+      // Build query params if shipping method is provided
+      final queryParams = <String, dynamic>{};
+      if (shippingMethod != null) {
+        queryParams['shipping_method'] = shippingMethod;
+        debugPrint('🛒 CART API: Fetching with shipping_method=$shippingMethod');
+      } else {
+        debugPrint('🛒 CART API: Fetching WITHOUT shipping_method (tax will be 0)');
+      }
+      
+      final response = await _api.get(
+        ApiConstants.getCart,
+        queryParams: queryParams.isNotEmpty ? queryParams : null,
+      );
 
       if (response.success) {
         _cartData = CartData.fromJson(response.data ?? {});

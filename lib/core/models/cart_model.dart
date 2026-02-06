@@ -4,6 +4,7 @@ class CartItem {
   final int id;
   final int productId;
   final int? variantId;
+  final int? categoryId;  // For tax calculation debugging
   final int quantity;
   final String productName;
   final String slug;
@@ -20,6 +21,7 @@ class CartItem {
     required this.id,
     required this.productId,
     this.variantId,
+    this.categoryId,
     required this.quantity,
     required this.productName,
     required this.slug,
@@ -53,6 +55,9 @@ class CartItem {
       productId: json['product_id'] is int ? json['product_id'] : int.parse(json['product_id'].toString()),
       variantId: json['variant_id'] != null 
           ? (json['variant_id'] is int ? json['variant_id'] : int.parse(json['variant_id'].toString())) 
+          : null,
+      categoryId: json['category_id'] != null 
+          ? (json['category_id'] is int ? json['category_id'] : int.tryParse(json['category_id'].toString())) 
           : null,
       quantity: json['quantity'] is int ? json['quantity'] : int.parse(json['quantity'].toString()),
       productName: productName,

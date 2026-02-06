@@ -98,22 +98,15 @@ class ProductService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('🌐 Making API call for product $id...');
       final response = await _api.get(
         ApiConstants.getProductById,
         queryParams: {'id': id},
       );
 
       if (response.success && response.data != null) {
-        debugPrint('Product details response keys: ${response.data!.keys.toList()}');
         Product product;
         if (response.data!.containsKey('product')) {
-          // Parse product with related_products from response root
           final productData = response.data!['product'] as Map<String, dynamic>;
-          
-          // Debug: Log options and variants from API
-          debugPrint('📋 API options: ${productData['options']?.length ?? 'null'}');
-          debugPrint('📋 API variations: ${productData['variations']?.length ?? 'null'}');
           
           // Merge related_products from response root into product data
           if (response.data!.containsKey('related_products')) {
@@ -121,26 +114,20 @@ class ProductService extends ChangeNotifier {
           }
           
           product = Product.fromJson(productData);
-          
-          // Debug: Log parsed product
-          debugPrint('✅ Parsed product - options: ${product.options?.length ?? 'null'}, variants: ${product.variants?.length ?? 'null'}');
         } else {
           product = Product.fromJson(response.data!);
-          debugPrint('✅ Parsed product (no wrapper) - options: ${product.options?.length ?? 'null'}, variants: ${product.variants?.length ?? 'null'}');
         }
         
-        // 2. Save to cache with timestamp
+        // Save to cache with timestamp
         _productCache[id] = product;
         _productCacheTimestamps[id] = DateTime.now();
-        debugPrint('💾 Cached product $id (will refresh after $_cacheMaxAgeDays days)');
         
-        // 3. Sync to HomeService cache so category lists get updated product name
+        // Sync to HomeService cache so category lists get updated product name
         _homeService?.updateProductInCache(product);
         
         return product;
       } else {
         _error = response.message ?? 'Failed to load product details';
-        debugPrint('❌ API error: $_error');
       }
     } catch (e) {
       _error = e.toString();

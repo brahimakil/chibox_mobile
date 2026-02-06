@@ -66,7 +66,7 @@ class SimpleShippingSelector extends StatelessWidget {
                 child: _ShippingOption(
                   icon: '✈️',
                   label: 'Air Freight',
-                  subtitle: '7-14 days',
+                  subtitle: '14-21 days',
                   isSelected: selectedMethod == ShippingMethodType.air,
                   onTap: isEnabled ? () => onMethodSelected(ShippingMethodType.air) : null,
                   isDark: isDark,
@@ -81,7 +81,7 @@ class SimpleShippingSelector extends StatelessWidget {
                 child: _ShippingOption(
                   icon: '🚢',
                   label: 'Sea Freight',
-                  subtitle: '30-45 days',
+                  subtitle: '45-60 days',
                   isSelected: selectedMethod == ShippingMethodType.sea,
                   onTap: isEnabled ? () => onMethodSelected(ShippingMethodType.sea) : null,
                   isDark: isDark,

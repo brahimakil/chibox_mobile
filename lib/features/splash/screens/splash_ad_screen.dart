@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -42,11 +43,12 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
-    // Force 5 second skip duration regardless of DB value
-    _skipCountdown = 5;
+    // Skip countdown - 3 seconds (user can skip immediately by pressing Skip button)
+    _skipCountdown = 3;
+    _canSkip = true; // Allow immediate skip
     
-    // Initialize smooth progress animation (minimum 5 seconds)
-    final displayDuration = widget.ad.totalDuration < 5 ? 5 : widget.ad.totalDuration;
+    // Initialize smooth progress animation (minimum 3 seconds)
+    final displayDuration = widget.ad.totalDuration < 3 ? 3 : widget.ad.totalDuration;
     _progressController = AnimationController(
       vsync: this,
       duration: Duration(seconds: displayDuration),
@@ -94,9 +96,32 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
   }
 
   void _initializeVideo() async {
-    _videoController = VideoPlayerController.networkUrl(
-      Uri.parse(widget.ad.mediaUrl),
-    );
+    // TEMPORARILY MODIFIED: Check if using local asset
+    final isLocalAsset = widget.ad.mediaUrl.startsWith('assets/');
+    String? cachedPath;
+    
+    if (isLocalAsset) {
+      // Use local asset video
+      debugPrint('🎬 Playing from local asset: ${widget.ad.mediaUrl}');
+      _videoController = VideoPlayerController.asset(widget.ad.mediaUrl);
+    } else {
+      // Try to use cached video first for instant playback
+      cachedPath = await _splashAdService.getCachedVideoPath(widget.ad.mediaUrl);
+      
+      if (cachedPath != null) {
+        // Use cached local file - instant playback!
+        debugPrint('🎬 Playing from cache: $cachedPath');
+        _videoController = VideoPlayerController.file(File(cachedPath));
+      } else {
+        // Fallback to network (and cache in background for next time)
+        debugPrint('🎬 Playing from network: ${widget.ad.mediaUrl}');
+        _videoController = VideoPlayerController.networkUrl(
+          Uri.parse(widget.ad.mediaUrl),
+        );
+        // Cache for next time
+        _splashAdService.downloadAndCacheVideo(widget.ad.mediaUrl);
+      }
+    }
     
     try {
       await _videoController!.initialize();
@@ -110,6 +135,26 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
       }
     } catch (e) {
       debugPrint('Error initializing video: $e');
+      // If cached file fails, try network (only for non-local assets)
+      if (!isLocalAsset && cachedPath != null) {
+        debugPrint('🎬 Cache failed, trying network...');
+        _videoController?.dispose();
+        _videoController = VideoPlayerController.networkUrl(
+          Uri.parse(widget.ad.mediaUrl),
+        );
+        try {
+          await _videoController!.initialize();
+          await _videoController!.setLooping(false);
+          await _videoController!.play();
+          if (mounted) {
+            setState(() {
+              _videoInitialized = true;
+            });
+          }
+        } catch (e2) {
+          debugPrint('Network video also failed: $e2');
+        }
+      }
     }
   }
 
@@ -123,7 +168,7 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
   }
 
   void _handleSkip() {
-    if (!_canSkip || _isCompleted) return;
+    if (_isCompleted) return;
     _isCompleted = true;
     _skipTimer?.cancel();
     _progressController.stop();
@@ -136,8 +181,8 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
   }
 
   void _handleTap() {
-    // Only allow tap-to-skip after countdown completes
-    if (_isCompleted || !_canSkip) return;
+    // Allow tap to navigate immediately
+    if (_isCompleted) return;
     
     _isCompleted = true;
     _skipTimer?.cancel();
@@ -236,13 +281,14 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
           ),
           
           // Tap to explore hint (if has link)
-          if (widget.ad.hasLink)
-            Positioned(
-              bottom: MediaQuery.of(context).padding.bottom + 60,
-              left: 0,
-              right: 0,
-              child: _buildTapHint(isDark),
-            ),
+          // TEMPORARILY DISABLED: Hiding tap to explore button
+          // if (widget.ad.hasLink)
+          //   Positioned(
+          //     bottom: MediaQuery.of(context).padding.bottom + 60,
+          //     left: 0,
+          //     right: 0,
+          //     child: _buildTapHint(isDark),
+          //   ),
         ],
       ),
     );
@@ -396,21 +442,19 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _canSkip ? 'Skip' : 'Skip in $_skipCountdown',
+              'Skip',
               style: TextStyle(
                 color: textColor,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
             ),
-            if (_canSkip) ...[
-              const SizedBox(width: 4),
-              Icon(
-                Icons.chevron_right,
-                color: textColor,
-                size: 18,
-              ),
-            ],
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right,
+              color: textColor,
+              size: 18,
+            ),
           ],
         ),
       ),

@@ -47,20 +47,33 @@ class ProductCard extends StatefulWidget {
 
   // Factory constructor to create from Product model
   factory ProductCard.fromProduct(Product product, {VoidCallback? onTap, VoidCallback? onMenuTap}) {
-    // Helper to check if a string contains Chinese characters
-    bool containsChinese(String text) {
-      return RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
-    }
-    
-    // Get the best available name - only use non-Chinese text
+    // Get the best available name
+    // Priority: displayName (English/DeepSeek) > name (English) > originalName (Chinese)
+    // Note: Product cards show Chinese as-is. Translation only happens inside ProductDetails.
     String productName = '';
-    if (product.displayName != null && product.displayName!.isNotEmpty && !containsChinese(product.displayName!)) {
+    
+    // Helper to check if text contains Chinese characters
+    bool containsChinese(String text) => RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
+    
+    final hasChineseOriginal = product.originalName != null && 
+        product.originalName!.isNotEmpty && 
+        containsChinese(product.originalName!);
+    
+    final hasGoodEnglishDisplay = product.displayName != null && 
+        product.displayName!.isNotEmpty && 
+        !containsChinese(product.displayName!) &&
+        product.displayName!.length > 10;
+    
+    if (hasGoodEnglishDisplay) {
       productName = product.displayName!;
     } else if (product.name.isNotEmpty && !containsChinese(product.name)) {
       productName = product.name;
+    } else if (hasChineseOriginal) {
+      // Show Chinese - user will see translation when they tap into product
+      productName = product.originalName!;
+    } else if (product.name.isNotEmpty) {
+      productName = product.name;
     }
-    // Don't fall back to originalName as it's always Chinese
-    // If no English name, show empty - the card will handle displaying gracefully
     
     return ProductCard(
       product: product,
@@ -294,7 +307,7 @@ class _ProductCardState extends State<ProductCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Product Name
+                      // Product Name - uses backend translation (DeepSeek)
                       Text(
                         widget.name,
                         style: TextStyle(
