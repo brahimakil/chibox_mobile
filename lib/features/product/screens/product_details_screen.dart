@@ -90,6 +90,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     super.initState();
     _product = widget.product;
     
+    // If opened from a push notification with a stub product (empty name),
+    // start in loading state immediately so the UI shows skeletons
+    // instead of a brief flash of empty content.
+    if (_product.name.isEmpty) {
+      _isLoading = true;
+    }
+    
     // Create a fresh scroll controller for similar products
     _similarScrollController = ScrollController();
     
@@ -110,7 +117,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       // If we already have categoryId from listing, start similar products fetch immediately
       // This runs in parallel with full product details fetch
       if (_product.categoryId != null) {
-        debugPrint('🚀 PARALLEL FETCH: Starting similar products early (categoryId: ${_product.categoryId})');
         _fetchSimilarProducts();
       } else {
         // No categoryId - disable "Load More" button immediately
@@ -139,7 +145,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     
     if (pixels >= maxExtent - 800) {
       if (_hasMoreSimilar && !_isLoadingMoreSimilar && !_isLoadingSimilar) {
-        debugPrint('🔄 Triggering pagination - scrolled to ${pixels.toInt()}/${maxExtent.toInt()}');
         _fetchSimilarProducts(loadMore: true);
       }
     }
@@ -326,7 +331,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       setState(() => _selectedVariant = found);
       
     } catch (e) {
-      debugPrint('Error matching variant: $e');
     }
   }
 
@@ -366,11 +370,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       
       // Fetch similar products if we now have categoryId
       if (_product.categoryId != null && !_similarFetchStarted) {
-        debugPrint('🔄 Fetching similar products after full details (categoryId: ${_product.categoryId})');
         _fetchSimilarProducts();
       } else if (_product.categoryId == null) {
         // Still no categoryId even after full details - disable Load More
-        debugPrint('⚠️ No categoryId even after full details, disabling pagination');
         setState(() {
           _hasMoreSimilar = false;
         });
@@ -421,7 +423,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   }
 
   void _showVariantSheet() {
-    debugPrint('🔔 _showVariantSheet called - product options: ${_product.options?.length ?? 'null'}, variants: ${_product.variants?.length ?? 'null'}');
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -476,7 +477,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               
               // If variant is stale, refresh the product and notify user
               if (hasStaleVariant && mounted) {
-                debugPrint('🔄 Variant stale - refreshing product with FORCE REFRESH...');
                 // Clear selected options and variant
                 setState(() {
                   _selectedOptions.clear();
@@ -1533,7 +1533,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         // Trigger pagination when within 300px of bottom
                         if (metrics.pixels >= metrics.maxScrollExtent - 300) {
                           if (_hasMoreSimilar && !_isLoadingMoreSimilar && !_isLoadingSimilar) {
-                            debugPrint('🔄 NotificationListener: Triggering pagination at ${metrics.pixels.toInt()}/${metrics.maxScrollExtent.toInt()}');
                             _fetchSimilarProducts(loadMore: true);
                           }
                         }

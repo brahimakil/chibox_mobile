@@ -128,7 +128,6 @@ class _ProductCardState extends State<ProductCard> {
       final cartService = Provider.of<CartService>(context, listen: false);
       _cartIdSubscription = cartService.onIdUpdated.listen((update) {
         if (update['old'] == _currentId && mounted) {
-          debugPrint('🔄 ProductCard: Updating ID from ${_currentId} to ${update['new']}');
           setState(() {
             _currentId = update['new']!;
           });

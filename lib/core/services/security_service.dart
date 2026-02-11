@@ -41,7 +41,6 @@ class SecurityService extends ChangeNotifier {
         value: DateTime.now().toIso8601String(),
       );
     } catch (e) {
-      debugPrint('Error setting last active time: $e');
     }
   }
 
@@ -52,7 +51,6 @@ class SecurityService extends ChangeNotifier {
         return DateTime.parse(timeStr);
       }
     } catch (e) {
-      debugPrint('Error getting last active time: $e');
     }
     return null;
   }
@@ -88,7 +86,6 @@ class SecurityService extends ChangeNotifier {
       _lockTimeout = seconds;
       notifyListeners();
     } catch (e) {
-      debugPrint('Error setting lock timeout: $e');
     }
   }
 
@@ -99,7 +96,6 @@ class SecurityService extends ChangeNotifier {
           canAuthenticateWithBiometrics || await _localAuth.isDeviceSupported();
       _canCheckBiometrics = canAuthenticate;
     } on PlatformException catch (e) {
-      debugPrint('Error checking biometrics availability: $e');
       _canCheckBiometrics = false;
     }
     notifyListeners();
@@ -112,7 +108,6 @@ class SecurityService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Error setting PIN: $e');
       return false;
     }
   }
@@ -122,7 +117,6 @@ class SecurityService extends ChangeNotifier {
       final storedPin = await _storage.read(key: _pinKey);
       return storedPin == pin;
     } catch (e) {
-      debugPrint('Error verifying PIN: $e');
       return false;
     }
   }
@@ -136,7 +130,6 @@ class SecurityService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Error removing PIN: $e');
       return false;
     }
   }
@@ -158,7 +151,6 @@ class SecurityService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Error setting biometrics: $e');
       return false;
     }
   }
@@ -175,7 +167,6 @@ class SecurityService extends ChangeNotifier {
         ),
       );
     } on PlatformException catch (e) {
-      debugPrint('Error authenticating with biometrics: $e');
       return false;
     }
   }

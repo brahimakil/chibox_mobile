@@ -72,7 +72,6 @@ class ShippingService extends ChangeNotifier {
   /// Fetch available shipping methods
   Future<List<ShippingMethod>> fetchMethods() async {
     try {
-      debugPrint('📦 Fetching shipping methods...');
       final response = await _api.get(ApiConstants.shippingGetMethods);
       
       if (response.success && response.data != null) {
@@ -83,18 +82,15 @@ class ShippingService extends ChangeNotifier {
           _methods = methodsList
               .map((m) => ShippingMethod.fromJson(m))
               .toList();
-          debugPrint('✅ Loaded ${_methods!.length} shipping methods');
           notifyListeners();
           return _methods!;
         }
       }
       
       _error = response.message;
-      debugPrint('⚠️ Failed to fetch shipping methods: $_error');
       return [];
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Error fetching shipping methods: $e');
       return [];
     }
   }
@@ -113,8 +109,6 @@ class ShippingService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('📦 Calculating shipping for cart (method: ${method.value})...');
-      
       final queryParams = <String, dynamic>{
         'method': method.value,
       };
@@ -142,22 +136,17 @@ class ShippingService extends ChangeNotifier {
         // Track processing products for polling
         _updateProcessingProducts(calculation);
         
-        debugPrint('✅ Shipping calculated: \$${calculation.summary.totalShippingCost}');
-        debugPrint('   Items: ${calculation.summary.itemsCalculated}/${calculation.summary.totalItems} calculated');
-        
         _isLoading = false;
         notifyListeners();
         return calculation;
       }
       
       _error = response.message;
-      debugPrint('⚠️ Shipping calculation failed: $_error');
       _isLoading = false;
       notifyListeners();
       return ShippingCalculation.error(_error ?? 'Unknown error');
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Error calculating shipping: $e');
       _isLoading = false;
       notifyListeners();
       return ShippingCalculation.error(_error!);
@@ -174,8 +163,6 @@ class ShippingService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('📦 Comparing shipping methods...');
-      
       // Build request body
       final body = <String, dynamic>{};
       if (cartItemIds != null && cartItemIds.isNotEmpty) {
@@ -190,41 +177,17 @@ class ShippingService extends ChangeNotifier {
       if (response.success && response.data != null) {
         _comparison = ShippingComparison.fromJson(response.data);
         
-        debugPrint('✅ Shipping comparison complete:');
-        debugPrint('   Air: \$${_comparison!.air.totalCost} (${_comparison!.air.estimatedDays})');
-        debugPrint('   Sea: \$${_comparison!.sea.totalCost} (${_comparison!.sea.estimatedDays})');
-        debugPrint('   Recommended: ${_comparison!.recommended}');
-        
-        // Log confidence scores per item
-        final data = response.data['data'] ?? response.data;
-        final methods = data['methods'] ?? {};
-        final airItems = (methods['air']?['items'] as List?) ?? [];
-        for (var item in airItems) {
-          final productId = item['product_id'];
-          final confidence = item['confidence_score'];
-          final usedFallback = item['used_fallback'] ?? false;
-          if (confidence != null) {
-            debugPrint('   📊 Product $productId: AI confidence ${(confidence * 100).toStringAsFixed(0)}%');
-          } else if (!usedFallback) {
-            debugPrint('   📊 Product $productId: Manual/API data (no AI)');
-          } else {
-            debugPrint('   📊 Product $productId: Using fallback estimates');
-          }
-        }
-        
         _isComparing = false;
         notifyListeners();
         return _comparison!;
       }
       
       _error = response.message;
-      debugPrint('⚠️ Shipping comparison failed: $_error');
       _isComparing = false;
       notifyListeners();
       return ShippingComparison.empty();
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Error comparing shipping: $e');
       _isComparing = false;
       notifyListeners();
       return ShippingComparison.empty();
@@ -245,7 +208,6 @@ class ShippingService extends ChangeNotifier {
       
       return null;
     } catch (e) {
-      debugPrint('❌ Error getting product status: $e');
       return null;
     }
   }
@@ -253,8 +215,6 @@ class ShippingService extends ChangeNotifier {
   /// Trigger AI estimation for a product
   Future<bool> triggerEstimation(int productId, {bool async = true}) async {
     try {
-      debugPrint('🤖 Triggering AI estimation for product $productId...');
-      
       final response = await _api.post(
         ApiConstants.shippingTriggerEstimation,
         body: {
@@ -272,14 +232,11 @@ class ShippingService extends ChangeNotifier {
           _startPollingIfNeeded();
         }
         
-        debugPrint('✅ Estimation triggered: $status');
         return true;
       }
       
-      debugPrint('⚠️ Failed to trigger estimation: ${response.message}');
       return false;
     } catch (e) {
-      debugPrint('❌ Error triggering estimation: $e');
       return false;
     }
   }
@@ -311,22 +268,17 @@ class ShippingService extends ChangeNotifier {
       return; // Already polling
     }
     
-    debugPrint('🔄 Starting shipping estimation polling...');
-    
     _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       if (_processingProductIds.isEmpty) {
         _stopPolling();
         return;
       }
       
-      debugPrint('🔄 Polling for shipping updates (${_processingProductIds.length} products)...');
-      
       // Re-fetch current calculation to check for updates
       await calculateForCart(method: _selectedMethod);
       
       // Check if all done
       if (_processingProductIds.isEmpty) {
-        debugPrint('✅ All shipping estimations complete!');
         _stopPolling();
       }
     });

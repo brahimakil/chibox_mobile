@@ -175,9 +175,8 @@ class ObjectDetectionService {
       
       _objectDetector = ObjectDetector(options: options);
       _isInitialized = true;
-      debugPrint('✅ Object detection initialized (with classification)');
     } catch (e) {
-      debugPrint('❌ Failed to initialize object detection: $e');
+      // initialization failed
     }
   }
   
@@ -203,7 +202,6 @@ class ObjectDetectionService {
     final imageArea = imageSize.width * imageSize.height;
     
     if (_objectDetector == null) {
-      debugPrint('❌ Object detector not available');
       return DetectionResult(
         allObjects: [],
         suggestions: [],
@@ -216,15 +214,11 @@ class ObjectDetectionService {
       final inputImage = InputImage.fromFilePath(imagePath);
       final objects = await _objectDetector!.processImage(inputImage);
       
-      debugPrint('🔍 ML Kit detected ${objects.length} objects');
-      
       // Convert to our DetectedObject format with area ratio
       List<DetectedObject> detectedObjects = objects.map((obj) {
         final box = obj.boundingBox;
         final objectArea = box.width * box.height;
         final areaRatio = objectArea / imageArea;
-        
-        debugPrint('  📦 Object: ${obj.labels.map((l) => '${l.text}(${(l.confidence * 100).toStringAsFixed(0)}%)').join(', ')} | Area: ${(areaRatio * 100).toStringAsFixed(1)}%');
         
         return DetectedObject(
           boundingBox: box,
@@ -263,8 +257,6 @@ class ObjectDetectionService {
       // Primary object is the first suggestion (highest relevance)
       final primaryObject = suggestions.isNotEmpty ? suggestions.first : null;
       
-      debugPrint('✅ Detection complete: ${suggestions.length} suggestions, primary: ${primaryObject?.primaryLabel ?? 'none'}');
-      
       return DetectionResult(
         allObjects: detectedObjects,
         primaryObject: primaryObject,
@@ -273,7 +265,6 @@ class ObjectDetectionService {
         originalImagePath: imagePath,
       );
     } catch (e) {
-      debugPrint('❌ Object detection failed: $e');
       return DetectionResult(
         allObjects: [],
         suggestions: [],
@@ -305,7 +296,6 @@ class ObjectDetectionService {
       // Decode image
       final originalImage = img.decodeImage(bytes);
       if (originalImage == null) {
-        debugPrint('❌ Failed to decode image');
         return null;
       }
       
@@ -325,7 +315,6 @@ class ObjectDetectionService {
       final cropHeight = cropBottom - cropTop;
       
       if (cropWidth <= 10 || cropHeight <= 10) {
-        debugPrint('❌ Invalid crop dimensions: ${cropWidth}x$cropHeight');
         return null;
       }
       
@@ -347,10 +336,8 @@ class ObjectDetectionService {
       final outputFile = File(outputPath);
       await outputFile.writeAsBytes(encodedBytes);
       
-      debugPrint('✅ Cropped image: ${cropWidth}x$cropHeight -> $outputPath');
       return outputPath;
     } catch (e) {
-      debugPrint('❌ Failed to crop image: $e');
       return null;
     }
   }
@@ -377,7 +364,6 @@ class ObjectDetectionService {
       
       return await cropToObject(imagePath, scaledBox, paddingPercent: paddingPercent);
     } catch (e) {
-      debugPrint('❌ Failed to crop image precisely: $e');
       return null;
     }
   }
@@ -415,10 +401,8 @@ class ObjectDetectionService {
       final encodedBytes = img.encodeJpg(croppedImage, quality: 85);
       await File(outputPath).writeAsBytes(encodedBytes);
       
-      debugPrint('✅ Generated center crop: ${cropW}x$cropH');
       return outputPath;
     } catch (e) {
-      debugPrint('❌ Failed to generate center crop: $e');
       return null;
     }
   }

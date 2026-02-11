@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/models/home_data_model.dart';
 import '../../../core/theme/theme.dart';
+import '../../../core/utils/notification_navigation_helper.dart';
 
 class GridElementsSection extends StatelessWidget {
   final List<GridElement> elements;
@@ -92,10 +93,18 @@ class GridElementsSection extends StatelessWidget {
   Widget _buildElementCard(BuildContext context, GridElement element) {
     return GestureDetector(
       onTap: () {
-        // Handle actions
-        if (element.actions != null) {
-          // TODO: Implement action handling (navigation, etc)
-          debugPrint('Grid Element tapped: ${element.actions}');
+        if (element.actions != null && element.actions!.isNotEmpty) {
+          final type = element.actions!['type']?.toString();
+          final id = element.actions!['id'] != null
+              ? int.tryParse(element.actions!['id'].toString())
+              : null;
+          final url = element.actions!['url']?.toString();
+          NotificationNavigationHelper.navigate(
+            context: context,
+            notificationType: type,
+            targetId: id,
+            actionUrl: url,
+          );
         }
       },
       child: AspectRatio(

@@ -136,7 +136,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
     try {
       await _objectDetection.initialize();
     } catch (e) {
-      debugPrint('⚠️ Object detection init failed: $e');
     }
   }
 
@@ -165,7 +164,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
       await _cameraController!.setFlashMode(_isFlashOn ? FlashMode.off : FlashMode.torch);
       setState(() => _isFlashOn = !_isFlashOn);
     } catch (e) {
-      debugPrint('Flash toggle failed: $e');
     }
   }
 
@@ -266,7 +264,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
           if (crop != null) searchImagePath = crop;
         }
       } catch (e) {
-        debugPrint('⚠️ Detection failed: $e');
         // Show default center crop selector
         setState(() {
           _cropSelectorRect = const Rect.fromLTWH(0.15, 0.15, 0.7, 0.7);
@@ -337,7 +334,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
     final cacheKey = _getCacheKey(index, _filterState);
     if (_searchCache.containsKey(cacheKey)) {
       final cached = _searchCache[cacheKey]!;
-      debugPrint('📦 Using cached results for key: $cacheKey (${cached.products.length} products)');
       setState(() {
         _selectedSuggestionIndex = index;
         _products = cached.products;
@@ -381,7 +377,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
           if (clearDetections) _detectionResult = null;
         });
       } catch (e) {
-        debugPrint('Resume camera failed: $e');
       }
     }
   }
@@ -418,12 +413,9 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
         
         if (normalizedFile != null && await File(normalizedFile.path).exists()) {
           normalizedImagePath = normalizedFile.path;
-          debugPrint('📸 Gallery image normalized to JPEG: $normalizedImagePath');
         } else {
-          debugPrint('⚠️ Failed to normalize gallery image, using original');
         }
       } catch (e) {
-        debugPrint('⚠️ Image normalization error: $e');
       }
       
       // Get image dimensions from normalized image
@@ -497,7 +489,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
           });
         }
       } catch (e) {
-        debugPrint('⚠️ Detection failed: $e');
         // searchImagePath is already set to normalizedImagePath
         // Show center crop selector on detection failure
         setState(() {
@@ -545,13 +536,10 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
           // Only use compressed version if it's still reasonably sized (>10KB)
           if (compressedSize > 10 * 1024) {
             fileToUpload = File(compressedFile.path);
-            debugPrint('📸 Compressed: ${originalSize}B → ${compressedSize}B');
           } else {
-            debugPrint('⚠️ Compression too aggressive, using original');
           }
         }
       } else {
-        debugPrint('📸 Image already small (${originalSize}B), skipping compression');
       }
       
       _lastSearchedImagePath = fileToUpload.path;
@@ -595,7 +583,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
             currentPage: 1,
             convertedImageUrl: _convertedImageUrl,
           );
-          debugPrint('💾 Cached results for key: $cacheKey (${products.length} products)');
         }
         
         setState(() {
@@ -723,7 +710,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
         }
       }
     } catch (e) {
-      debugPrint('Prefetch error: $e');
     }
     
     _isPrefetching = false;
@@ -820,7 +806,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
     final cacheKey = _getCacheKey(_selectedSuggestionIndex, newFilter);
     if (_searchCache.containsKey(cacheKey)) {
       final cached = _searchCache[cacheKey]!;
-      debugPrint('📦 Using cached filtered results for key: $cacheKey (${cached.products.length} products)');
       setState(() {
         _filterState = newFilter;
         _products = cached.products;
@@ -871,7 +856,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
           currentPage: 1,
           convertedImageUrl: convertedUrl,
         );
-        debugPrint('💾 Cached filtered results for key: $cacheKey (${products.length} products)');
         
         setState(() {
           _products = products;
@@ -1009,7 +993,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
     
     // Minimum size check (at least 50x50 pixels to be a valid selection)
     if (drawRect.width.abs() < 50 || drawRect.height.abs() < 50) {
-      debugPrint('🚫 Draw selection too small: ${drawRect.width.abs()}x${drawRect.height.abs()}');
       return;
     }
     
@@ -1063,7 +1046,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
     
     // Check if selection is within valid bounds
     if (validRect.width < 0.05 || validRect.height < 0.05) {
-      debugPrint('🚫 Normalized selection too small: ${validRect.width}x${validRect.height}');
       return;
     }
     
@@ -1074,8 +1056,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
       validRect.right * _currentImageSize!.width,
       validRect.bottom * _currentImageSize!.height,
     );
-    
-    debugPrint('✂️ Quick crop: screen=$screenRect -> normalized=$validRect -> pixels=$pixelRect');
     
     // Use the ObjectDetectionService to crop the image
     final croppedPath = await _objectDetection.cropToObject(
@@ -1148,8 +1128,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
     // Check which handle or if inside the rect
     _activeCropHandle = _getHandleAtPosition(touchX, touchY);
     _lastCropPanPosition = Offset(touchX, touchY);
-    
-    debugPrint('🎯 Crop selector pan start: handle=$_activeCropHandle at ($touchX, $touchY)');
   }
   
   _CropHandle? _getHandleAtPosition(double x, double y) {
@@ -1321,8 +1299,6 @@ class _VisualSearchScreenState extends State<VisualSearchScreen>
       _cropSelectorRect.right * _currentImageSize!.width,
       _cropSelectorRect.bottom * _currentImageSize!.height,
     );
-    
-    debugPrint('🔄 Searching with crop selector: $_cropSelectorRect -> $pixelRect');
     
     final croppedPath = await _objectDetection.cropToObject(
       _frozenImage!.path,

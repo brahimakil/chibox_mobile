@@ -117,9 +117,9 @@ class FlashSaleSection extends StatelessWidget {
 
   Widget _buildStandardLayout(BuildContext context) {
     return SizedBox(
-      height: 240, // Compact height for cards
+      height: 226,
       child: ListView.separated(
-        padding: const EdgeInsets.only(left: AppSpacing.sm, right: AppSpacing.sm, bottom: 6),
+        padding: const EdgeInsets.only(left: AppSpacing.sm, right: AppSpacing.sm),
         scrollDirection: Axis.horizontal,
         itemCount: flashSale.products.length,
         separatorBuilder: (context, index) => AppSpacing.horizontalSm,

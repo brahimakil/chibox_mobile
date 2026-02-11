@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:http/http.dart' as http;
 import '../constants/api_constants.dart';
 import '../models/notification_model.dart';
 import '../utils/notification_navigation_helper.dart';
@@ -60,7 +62,6 @@ class FcmService {
       // Listen for token refresh
       _messaging.onTokenRefresh.listen((newToken) async {
         _fcmToken = newToken;
-        debugPrint('🔄 FCM Token refreshed: ${newToken.substring(0, 20)}...');
         await _updateTokenOnBackend(newToken);
       });
 
@@ -76,10 +77,11 @@ class FcmService {
         _handleMessageOpenedApp(initialMessage);
       }
 
+      // Subscribe to the global topic for broadcast notifications
+      await subscribeToTopic('global');
+
       _isInitialized = true;
-      debugPrint('✅ FCM Service initialized successfully');
     } catch (e) {
-      debugPrint('❌ FCM initialization failed: $e');
     }
   }
 
@@ -94,7 +96,6 @@ class FcmService {
       carPlay: false,
       criticalAlert: false,
     );
-    debugPrint('📬 FCM Permission status: ${settings.authorizationStatus}');
   }
 
   /// Initialize local notifications plugin
@@ -132,7 +133,6 @@ class FcmService {
 
   /// Handle notification tap
   void _onNotificationTapped(NotificationResponse response) {
-    debugPrint('📬 Notification tapped: ${response.payload}');
     _handleNotificationNavigation(response.payload);
   }
   
@@ -162,14 +162,11 @@ class FcmService {
       
       if (data == null) return;
       
-      debugPrint('📬 Parsed notification data: $data');
-      
       // Use Universal Navigation Helper
       final context = navigatorKey.currentContext;
       if (context == null) {
         // Store for later navigation if context not available
         _pendingNotificationData = data;
-        debugPrint('📬 Stored pending notification data for later navigation');
         return;
       }
       
@@ -177,41 +174,81 @@ class FcmService {
       NotificationNavigationHelper.navigateFromPushData(context, data);
       
     } catch (e) {
-      debugPrint('❌ Error parsing notification payload: $e');
     }
   }
   
   /// Process any pending notification navigation (call after app is ready)
   void processPendingNotification(BuildContext context) {
     if (_pendingNotificationData != null) {
-      debugPrint('📬 Processing pending notification navigation');
       NotificationNavigationHelper.navigateFromPushData(context, _pendingNotificationData!);
       _pendingNotificationData = null;
     }
   }
 
-  /// Show local notification
+  /// Show local notification (with optional big image)
   Future<void> _showLocalNotification(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
 
-    const androidDetails = AndroidNotificationDetails(
-      'chibox_notifications',
-      'Chibox Notifications',
-      channelDescription: 'Notifications for orders, promotions, and updates',
-      importance: Importance.high,
-      priority: Priority.high,
-      playSound: true,
-      icon: '@mipmap/launcher_icon',
-    );
+    // Try to get image URL from notification or data payload
+    final String? imageUrl = notification.android?.imageUrl 
+        ?? notification.apple?.imageUrl 
+        ?? message.data['image_url'];
 
-    const iosDetails = DarwinNotificationDetails(
+    // Build Android details — with big picture if image available
+    AndroidNotificationDetails androidDetails;
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      try {
+        final bigPicture = BigPictureStyleInformation(
+          ByteArrayAndroidBitmap.fromBase64String(
+            await _downloadImageAsBase64(imageUrl),
+          ),
+          contentTitle: notification.title,
+          summaryText: notification.body,
+          hideExpandedLargeIcon: true,
+        );
+        androidDetails = AndroidNotificationDetails(
+          'chibox_notifications',
+          'Chibox Notifications',
+          channelDescription: 'Notifications for orders, promotions, and updates',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
+          icon: '@mipmap/launcher_icon',
+          styleInformation: bigPicture,
+        );
+      } catch (_) {
+        // Fallback to regular notification if image download fails
+        androidDetails = const AndroidNotificationDetails(
+          'chibox_notifications',
+          'Chibox Notifications',
+          channelDescription: 'Notifications for orders, promotions, and updates',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
+          icon: '@mipmap/launcher_icon',
+        );
+      }
+    } else {
+      androidDetails = const AndroidNotificationDetails(
+        'chibox_notifications',
+        'Chibox Notifications',
+        channelDescription: 'Notifications for orders, promotions, and updates',
+        importance: Importance.high,
+        priority: Priority.high,
+        playSound: true,
+        icon: '@mipmap/launcher_icon',
+      );
+    }
+
+    final iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      interruptionLevel: InterruptionLevel.active,
     );
 
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
@@ -230,11 +267,9 @@ class FcmService {
     try {
       _fcmToken = await _messaging.getToken();
       if (_fcmToken != null) {
-        debugPrint('📱 FCM Token: ${_fcmToken!.substring(0, 30)}...');
       }
       return _fcmToken;
     } catch (e) {
-      debugPrint('❌ Error getting FCM token: $e');
       return null;
     }
   }
@@ -249,21 +284,12 @@ class FcmService {
 
   /// Handle foreground messages
   void _handleForegroundMessage(RemoteMessage message) {
-    debugPrint('📩 Foreground message received:');
-    debugPrint('   Title: ${message.notification?.title}');
-    debugPrint('   Body: ${message.notification?.body}');
-    debugPrint('   Data: ${message.data}');
-
     // Show local notification when app is in foreground
     _showLocalNotification(message);
   }
 
   /// Handle when user taps on notification (background/terminated)
   void _handleMessageOpenedApp(RemoteMessage message) {
-    debugPrint('📬 Notification tapped:');
-    debugPrint('   Title: ${message.notification?.title}');
-    debugPrint('   Data: ${message.data}');
-
     // Handle navigation based on notification data
     _handleNotificationNavigation(json.encode(message.data));
   }
@@ -272,9 +298,7 @@ class FcmService {
   Future<void> subscribeToTopic(String topic) async {
     try {
       await _messaging.subscribeToTopic(topic);
-      debugPrint('✅ Subscribed to topic: $topic');
     } catch (e) {
-      debugPrint('❌ Error subscribing to topic: $e');
     }
   }
 
@@ -282,9 +306,7 @@ class FcmService {
   Future<void> unsubscribeFromTopic(String topic) async {
     try {
       await _messaging.unsubscribeFromTopic(topic);
-      debugPrint('✅ Unsubscribed from topic: $topic');
     } catch (e) {
-      debugPrint('❌ Error unsubscribing from topic: $e');
     }
   }
 
@@ -292,7 +314,6 @@ class FcmService {
   Future<void> _updateTokenOnBackend(String token) async {
     try {
       if (!_apiService.isAuthenticated) {
-        debugPrint('⏭️ Skipping FCM token update - not authenticated');
         return;
       }
       
@@ -302,13 +323,21 @@ class FcmService {
       );
       
       if (response.success) {
-        debugPrint('✅ FCM token updated on backend');
       } else {
-        debugPrint('❌ Failed to update FCM token: ${response.message}');
       }
     } catch (e) {
-      debugPrint('❌ Error updating FCM token on backend: $e');
     }
+  }
+
+  /// Download an image from URL and return as base64 string
+  Future<String> _downloadImageAsBase64(String url) async {
+    final response = await http.get(Uri.parse(url)).timeout(
+      const Duration(seconds: 10),
+    );
+    if (response.statusCode == 200) {
+      return base64Encode(response.bodyBytes);
+    }
+    throw Exception('Failed to download image: ${response.statusCode}');
   }
 
   /// Manually trigger token update (call after user logs in)
@@ -325,5 +354,4 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp();
   }
-  debugPrint('🔔 Background message: ${message.notification?.title}');
 }

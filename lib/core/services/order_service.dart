@@ -39,8 +39,6 @@ class OrderService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('🛒 Checkout with data: $checkoutData');
-      
       final response = await _apiService.post(
         ApiConstants.checkout,
         body: checkoutData,
@@ -52,17 +50,13 @@ class OrderService extends ChangeNotifier {
         final order = data['order'] as Map<String, dynamic>?;
         final orderId = order?['id'] as int?;
         
-        debugPrint('✅ Order created successfully: $orderId');
-        
         _isLoading = false;
         notifyListeners();
         return orderId;
       } else {
         _error = response.message ?? 'Failed to create order';
-        debugPrint('❌ Checkout error: $_error');
       }
     } catch (e) {
-      debugPrint('❌ Checkout exception: $e');
       _error = 'Failed to create order: $e';
     }
 
@@ -131,7 +125,6 @@ class OrderService extends ChangeNotifier {
         _error = response.message;
       }
     } catch (e) {
-      debugPrint('Error fetching orders: $e');
       _error = 'Failed to fetch orders';
     }
 
@@ -174,7 +167,6 @@ class OrderService extends ChangeNotifier {
       
       _error = response.message;
     } catch (e) {
-      debugPrint('Error fetching order details: $e');
       _error = 'Failed to fetch order details';
     }
 
@@ -213,7 +205,6 @@ class OrderService extends ChangeNotifier {
       
       _error = response.message;
     } catch (e) {
-      debugPrint('Error cancelling order: $e');
       _error = 'Failed to cancel order';
     }
 
@@ -226,8 +217,6 @@ class OrderService extends ChangeNotifier {
   /// Returns payment data with 'payment_url' if successful
   Future<Map<String, dynamic>?> initiatePayment(int orderId) async {
     try {
-      debugPrint('💳 Initiating payment for order: $orderId');
-      
       final response = await _apiService.post(
         ApiConstants.paymentInitiate,
         body: {'order_id': orderId},
@@ -235,14 +224,11 @@ class OrderService extends ChangeNotifier {
 
       if (response.success && response.data != null) {
         final data = response.data as Map<String, dynamic>;
-        debugPrint('✅ Payment initiated: ${data['payment_url']}');
         return data;
       } else {
-        debugPrint('❌ Payment initiation failed: ${response.message}');
         return {'message': response.message ?? 'Failed to initiate payment'};
       }
     } catch (e) {
-      debugPrint('❌ Payment initiation exception: $e');
       return {'message': 'Error: $e'};
     }
   }

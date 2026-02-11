@@ -48,7 +48,7 @@ class AuthService extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
-      debugPrint('Error loading user: $e');
+      // Error loading user
     }
   }
 
@@ -71,7 +71,6 @@ class AuthService extends ChangeNotifier {
   /// Called after successful first order placement
   void markFirstOrderUsed() {
     // TODO: Implement when isFirstOrderEligible is added to User model
-    debugPrint('✅ First order discount marking - feature pending implementation');
   }
 
   /// Register new user
@@ -389,7 +388,7 @@ class AuthService extends ChangeNotifier {
     try {
       await _api.post(ApiConstants.logout);
     } catch (e) {
-      debugPrint('Logout API error: $e');
+      // Logout API error
     }
 
     // Clear local data regardless of API response

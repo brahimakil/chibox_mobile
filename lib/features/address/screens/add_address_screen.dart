@@ -233,7 +233,6 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Autofill error: $e');
     } finally {
       setState(() => _isAutoFilling = false);
     }

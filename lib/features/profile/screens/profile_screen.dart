@@ -11,6 +11,7 @@ import '../../address/screens/address_list_screen.dart';
 import '../../orders/screens/orders_list_screen.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import '../../deals/screens/deals_screen.dart';
+import '../../invoices/screens/invoices_list_screen.dart';
 import '../../support/screens/help_center_screen.dart';
 import '../../support/screens/contact_us_screen.dart';
 import '../../support/screens/about_screen.dart';
@@ -162,6 +163,16 @@ class ProfileScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                      );
+                    }),
+                  ),
+                  _MenuItem(
+                    icon: Iconsax.receipt, 
+                    title: 'Invoices', 
+                    onTap: () => _handleProtectedAction(context, authService, 'Invoices', () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const InvoicesListScreen()),
                       );
                     }),
                   ),

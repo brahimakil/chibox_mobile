@@ -355,7 +355,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading related categories: $e');
       if (mounted) {
         setState(() => _isLoadingCategories = false);
       }
@@ -390,7 +389,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
                   _isLoadingRecommended = false;
                 });
               }
-              debugPrint('📦 Loaded ${recommended.length} recommended products from "${section.title}"');
               return;
             }
           }
@@ -416,7 +414,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading recommended products: $e');
       if (mounted) {
         setState(() => _isLoadingRecommended = false);
       }
@@ -443,11 +440,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
     if (maxScroll > 0) {
       final scrollPercentage = (currentScroll / maxScroll * 100).clamp(0, 100);
       
-      // Debug scroll position periodically
-      if (scrollPercentage.toInt() % 25 == 0) {
-        debugPrint('📜 Scroll: ${scrollPercentage.toInt()}%, hasMore: $_hasMore, isLoading: $_isLoadingMore, prefetched: ${_prefetchedProducts.length}');
-      }
-      
       // Aggressive prefetch at 2% scroll for instant loading
       if (scrollPercentage >= 2 && scrollPercentage < 70 && !_isPrefetching && !_isLoadingMore && _hasMore && _prefetchedProducts.isEmpty) {
         _prefetchNextPage();
@@ -455,7 +447,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
       
       // Load more at 75% scroll (use prefetched data if available)
       if (scrollPercentage >= 75 && !_isLoadingMore && _hasMore) {
-        debugPrint('🔄 Triggering loadMore at ${scrollPercentage.toInt()}%');
         _loadMore();
       }
     }
@@ -465,7 +456,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
     if (_isPrefetching || !_hasMore || _prefetchedProducts.isNotEmpty) return;
     
     _isPrefetching = true;
-    debugPrint('🔮 Prefetching next page: ${_currentPage + 1}');
     
     try {
       final homeService = Provider.of<HomeService>(context, listen: false);
@@ -525,9 +515,7 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
       final hasNext = result['has_next'] == true;
       _prefetchedProducts = newProducts;
       _prefetchedHasNext = hasNext;
-      debugPrint('✅ Prefetched ${newProducts.length} products. has_next: $hasNext');
     } catch (e) {
-      debugPrint('❌ Prefetch error: $e');
     }
     
     _isPrefetching = false;
@@ -602,8 +590,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
       final hasNext = result['has_next'] == true;
       final pagination = result['pagination'] as Map<String, dynamic>?;
       final total = pagination?['total'] ?? newProducts.length;
-      
-      debugPrint('📦 Initial load: ${newProducts.length} products, hasNext: $hasNext, total: $total');
 
       if (mounted) {
         setState(() {
@@ -621,7 +607,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
         if (widget.config.initialProducts != null && 
             widget.config.initialProducts!.isNotEmpty && 
             hasNext) {
-           debugPrint('🚀 Instant View: Initial products matched, prefetching Page 2...');
            WidgetsBinding.instance.addPostFrameCallback((_) {
              _prefetchNextPage();
            });
@@ -630,7 +615,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
         // If initial load returned too few products to fill screen, auto-load more
         // This handles cases where many products are filtered out (e.g., $0 prices)
         if (hasNext && newProducts.length < 20) {
-          debugPrint('📦 Initial load too small (${newProducts.length}), auto-loading more...');
           // Schedule after frame to let the UI build
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && _hasMore) {
@@ -640,8 +624,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
         }
       }
     } catch (e, stackTrace) {
-      debugPrint('Error loading initial products: $e');
-      debugPrint('Stack trace: $stackTrace');
       if (mounted) {
         setState(() => _isInitialLoading = false);
       }
@@ -653,7 +635,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
 
     // Use prefetched products if available (instant load)
     if (_prefetchedProducts.isNotEmpty) {
-      debugPrint('⚡ Using prefetched products: ${_prefetchedProducts.length}, has_next: $_prefetchedHasNext');
       final prefetchedList = _prefetchedProducts;
       final prefetchedHasNext = _prefetchedHasNext;
       final totalAfterLoad = _products.length + prefetchedList.length;
@@ -669,7 +650,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
       
       // If we still don't have enough products to enable scroll, auto-load more
       if (prefetchedHasNext && totalAfterLoad < 20) {
-        debugPrint('📦 Still too few products after prefetch ($totalAfterLoad), auto-loading more...');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _hasMore && !_isLoadingMore) {
             _loadMore();
@@ -739,8 +719,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
 
       final newProducts = (result['products'] as List<Product>?) ?? [];
       final hasNext = result['has_next'] == true;
-      
-      debugPrint('📦 Load more: ${newProducts.length} products, hasNext: $hasNext, total now: ${_products.length + newProducts.length}');
 
       if (mounted) {
         final totalAfterLoad = _products.length + newProducts.length;
@@ -754,7 +732,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
         
         // If we still don't have enough products to enable scroll, auto-load more
         if (hasNext && totalAfterLoad < 20) {
-          debugPrint('📦 Still too few products ($totalAfterLoad), auto-loading more...');
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && _hasMore && !_isLoadingMore) {
               _loadMore();
@@ -763,8 +740,6 @@ class _UnifiedProductsGridScreenState extends State<UnifiedProductsGridScreen> {
         }
       }
     } catch (e, stackTrace) {
-      debugPrint('Error loading more products: $e');
-      debugPrint('Stack trace: $stackTrace');
       if (mounted) {
         setState(() => _isLoadingMore = false);
       }

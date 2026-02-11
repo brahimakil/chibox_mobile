@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -78,9 +77,6 @@ class ApiService {
     }
     if (_cookie != null) {
       headers['Cookie'] = _cookie!;
-      debugPrint('🍪 Sending Cookie: $_cookie');
-    } else {
-      debugPrint('⚠️ No Cookie to send');
     }
     return headers;
   }
@@ -108,19 +104,13 @@ class ApiService {
         attempts++;
         try {
           final url = _buildUrl(endpoint, queryParams);
-          debugPrint('🔴 API GET (Attempt $attempts): $url');
-          debugPrint('🔴 HEADERS: $_headers');
           
           final response = await client
               .get(Uri.parse(url), headers: _headers)
               .timeout(ApiConstants.connectionTimeout);
 
-          debugPrint('API Response Status: ${response.statusCode}');
-          
           return _handleResponse<T>(response);
         } catch (e) {
-          debugPrint('API GET Error (Attempt $attempts): $e');
-          
           // Only retry on network-related errors
           bool shouldRetry = e.toString().contains('ClientException') || 
                              e.toString().contains('SocketException') ||
@@ -151,9 +141,6 @@ class ApiService {
     
     try {
       final url = _buildUrl(endpoint, queryParams);
-      debugPrint('🔴 API POST: $url');
-      debugPrint('🔴 HEADERS: $_headers');
-      debugPrint('🔴 BODY: ${body != null ? jsonEncode(body) : 'null'}');
       
       final response = await client
           .post(
@@ -163,12 +150,8 @@ class ApiService {
           )
           .timeout(ApiConstants.connectionTimeout);
 
-      debugPrint('🔵 POST Response Status: ${response.statusCode}');
-      debugPrint('🔵 POST Response Body: ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}');
-      
       return _handleResponse<T>(response);
     } catch (e) {
-      debugPrint('❌ API POST Error: $e');
       return ApiResponse.error(_getErrorMessage(e));
     } finally {
       client.close();
@@ -237,18 +220,14 @@ class ApiService {
   }) async {
     try {
       final url = _buildUrl(endpoint, queryParams);
-      debugPrint('API Multipart POST: $url');
-      debugPrint('📁 File path: $filePath');
       
       // Verify file exists
       final file = File(filePath);
       if (!await file.exists()) {
-        debugPrint('❌ File does not exist: $filePath');
         return ApiResponse.error('File does not exist');
       }
       
       final fileSize = await file.length();
-      debugPrint('📏 File size: $fileSize bytes');
 
       final request = http.MultipartRequest('POST', Uri.parse(url));
       
@@ -264,7 +243,6 @@ class ApiService {
 
       // Add file with explicit content type for images
       final mimeType = _getMimeType(filePath);
-      debugPrint('📷 MIME type: $mimeType');
       
       request.files.add(await http.MultipartFile.fromPath(
         fileField, 
@@ -272,18 +250,12 @@ class ApiService {
         contentType: mimeType != null ? MediaType.parse(mimeType) : null,
       ));
 
-      debugPrint('📤 Sending multipart request...');
-      
       // Send request
       final streamedResponse = await request.send().timeout(ApiConstants.connectionTimeout);
       final response = await http.Response.fromStream(streamedResponse);
 
-      debugPrint('API Response Status: ${response.statusCode}');
-      debugPrint('API Response Body: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}...');
-      
       return _handleResponse<T>(response);
     } catch (e) {
-      debugPrint('API Multipart Error: $e');
       return ApiResponse.error(_getErrorMessage(e));
     }
   }
@@ -313,7 +285,6 @@ class ApiService {
     // Save cookie if present
     String? rawCookie = response.headers['set-cookie'];
     if (rawCookie != null) {
-      debugPrint('🍪 Received Set-Cookie: $rawCookie');
       int index = rawCookie.indexOf(';');
       _cookie = (index == -1) ? rawCookie : rawCookie.substring(0, index);
       SharedPreferences.getInstance().then((prefs) {
@@ -352,7 +323,6 @@ class ApiService {
           try {
             data = rawData as T;
           } catch (_) {
-            debugPrint('⚠️ Warning: Unexpected data format: $rawData');
             data = null;
           }
         }
@@ -367,8 +337,6 @@ class ApiService {
 
       return ApiResponse.error(message, statusCode: response.statusCode);
     } catch (e) {
-      debugPrint('API Parse Error: $e');
-      debugPrint('Response Body: ${response.body}');
       return ApiResponse.error('Failed to parse response', statusCode: response.statusCode);
     }
   }

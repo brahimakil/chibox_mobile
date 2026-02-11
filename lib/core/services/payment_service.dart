@@ -45,8 +45,6 @@ class PaymentService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('💳 Initiating payment for order: $orderId');
-
       final response = await _apiService.post(
         ApiConstants.paymentInitiate,
         body: {
@@ -64,8 +62,6 @@ class PaymentService extends ChangeNotifier {
 
         if (result.success && result.paymentUrl != null) {
           _paymentUrl = result.paymentUrl;
-          debugPrint('✅ Payment initiated: ${result.externalId}');
-          debugPrint('🔗 Payment URL: ${result.paymentUrl}');
         }
 
         _isLoading = false;
@@ -73,14 +69,12 @@ class PaymentService extends ChangeNotifier {
         return result;
       } else {
         _error = response.message;
-        debugPrint('❌ Payment initiation failed: ${response.message}');
         _isLoading = false;
         notifyListeners();
         return PaymentInitResponse.error(response.message);
       }
     } catch (e) {
       _error = 'Failed to initiate payment: $e';
-      debugPrint('❌ Payment initiation exception: $e');
       _isLoading = false;
       notifyListeners();
       return PaymentInitResponse.error(_error!);
@@ -103,8 +97,6 @@ class PaymentService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('💳 Initiating checkout payment');
-
       // Add currency to checkout data
       final requestData = {
         ...checkoutData,
@@ -125,8 +117,6 @@ class PaymentService extends ChangeNotifier {
 
         if (result.success && result.paymentUrl != null) {
           _paymentUrl = result.paymentUrl;
-          debugPrint('✅ Checkout payment initiated: ${result.externalId}');
-          debugPrint('🔗 Payment URL: ${result.paymentUrl}');
         }
 
         _isLoading = false;
@@ -134,14 +124,12 @@ class PaymentService extends ChangeNotifier {
         return result;
       } else {
         _error = response.message;
-        debugPrint('❌ Checkout payment initiation failed: ${response.message}');
         _isLoading = false;
         notifyListeners();
         return PaymentInitResponse.error(response.message);
       }
     } catch (e) {
       _error = 'Failed to initiate checkout payment: $e';
-      debugPrint('❌ Checkout payment initiation exception: $e');
       _isLoading = false;
       notifyListeners();
       return PaymentInitResponse.error(_error!);
@@ -163,8 +151,6 @@ class PaymentService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('🔍 Checking payment status: externalId=$externalId, orderId=$orderId');
-
       final body = <String, dynamic>{};
       if (externalId != null) body['external_id'] = externalId;
       if (orderId != null) body['order_id'] = orderId;
@@ -186,20 +172,17 @@ class PaymentService extends ChangeNotifier {
           _paymentUrl = result.paymentUrl;
         }
 
-        debugPrint('✅ Payment status: ${result.transaction?.status}');
         _isLoading = false;
         notifyListeners();
         return result;
       } else {
         _error = response.message;
-        debugPrint('❌ Payment status check failed: ${response.message}');
         _isLoading = false;
         notifyListeners();
         return PaymentStatusResponse.error(response.message);
       }
     } catch (e) {
       _error = 'Failed to check payment status: $e';
-      debugPrint('❌ Payment status exception: $e');
       _isLoading = false;
       notifyListeners();
       return PaymentStatusResponse.error(_error!);
@@ -216,8 +199,6 @@ class PaymentService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('✔️ Verifying payment: $externalId');
-
       final response = await _apiService.post(
         ApiConstants.paymentVerify,
         body: {'external_id': externalId},
@@ -230,20 +211,17 @@ class PaymentService extends ChangeNotifier {
           'data': response.data,
         });
 
-        debugPrint('✅ Payment verified: ${result.status}');
         _isLoading = false;
         notifyListeners();
         return result;
       } else {
         _error = response.message;
-        debugPrint('❌ Payment verification failed: ${response.message}');
         _isLoading = false;
         notifyListeners();
         return PaymentVerifyResponse.error(response.message);
       }
     } catch (e) {
       _error = 'Failed to verify payment: $e';
-      debugPrint('❌ Payment verification exception: $e');
       _isLoading = false;
       notifyListeners();
       return PaymentVerifyResponse.error(_error!);
@@ -270,7 +248,6 @@ class PaymentService extends ChangeNotifier {
         // Wait before next poll
         await Future.delayed(interval);
       } catch (e) {
-        debugPrint('❌ Poll error: $e');
         await Future.delayed(interval);
       }
     }
@@ -289,8 +266,6 @@ class PaymentService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('🔄 Retrying payment for order: $orderId');
-
       final response = await _apiService.post(
         ApiConstants.paymentRetry,
         body: {
@@ -308,8 +283,6 @@ class PaymentService extends ChangeNotifier {
 
         if (result.success && result.paymentUrl != null) {
           _paymentUrl = result.paymentUrl;
-          debugPrint('✅ Payment retry initiated: ${result.externalId}');
-          debugPrint('🔗 Payment URL: ${result.paymentUrl}');
         }
 
         _isLoading = false;
@@ -317,14 +290,12 @@ class PaymentService extends ChangeNotifier {
         return result;
       } else {
         _error = response.message;
-        debugPrint('❌ Payment retry failed: ${response.message}');
         _isLoading = false;
         notifyListeners();
         return PaymentInitResponse.error(response.message);
       }
     } catch (e) {
       _error = 'Failed to retry payment: $e';
-      debugPrint('❌ Payment retry exception: $e');
       _isLoading = false;
       notifyListeners();
       return PaymentInitResponse.error(_error!);
@@ -347,8 +318,6 @@ class PaymentService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('❌ Cancelling payment: externalId=$externalId, orderId=$orderId');
-
       final body = <String, dynamic>{};
       if (externalId != null) body['external_id'] = externalId;
       if (orderId != null) body['order_id'] = orderId;
@@ -362,16 +331,13 @@ class PaymentService extends ChangeNotifier {
       notifyListeners();
 
       if (response.success) {
-        debugPrint('✅ Payment cancelled');
         return true;
       } else {
         _error = response.message;
-        debugPrint('❌ Payment cancel failed: ${response.message}');
         return false;
       }
     } catch (e) {
       _error = 'Failed to cancel payment: $e';
-      debugPrint('❌ Payment cancel exception: $e');
       _isLoading = false;
       notifyListeners();
       return false;

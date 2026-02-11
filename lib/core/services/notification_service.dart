@@ -52,7 +52,6 @@ class NotificationService extends ChangeNotifier {
     if (!force && _lastFetchTime != null && !refresh) {
       final timeSinceLastFetch = DateTime.now().difference(_lastFetchTime!);
       if (timeSinceLastFetch < _minFetchInterval) {
-        debugPrint('⏳ Skipping fetch - too soon (${timeSinceLastFetch.inMilliseconds}ms since last fetch)');
         return;
       }
     }
@@ -106,15 +105,12 @@ class NotificationService extends ChangeNotifier {
           _notifications.addAll(newNotifications);
         }
 
-        debugPrint('📬 Fetched ${newNotifications.length} notifications (page: $page, unread: $_unreadCount)');
         _lastFetchTime = DateTime.now(); // Track successful fetch time
       } else {
         _error = response.message ?? 'Failed to load notifications';
-        debugPrint('❌ Error fetching notifications: $_error');
       }
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Exception fetching notifications: $e');
     } finally {
       _isLoading = false;
       _isLoadingMore = false;
@@ -162,12 +158,10 @@ class NotificationService extends ChangeNotifier {
         final data = response.data as Map<String, dynamic>;
         _unreadCount = data['unread_count'] as int? ?? _unreadCount;
         notifyListeners();
-        debugPrint('✅ Marked ${ids.length} notification(s) as seen');
         return true;
       }
       return false;
     } catch (e) {
-      debugPrint('❌ Error marking as seen: $e');
       return false;
     }
   }
@@ -177,7 +171,6 @@ class NotificationService extends ChangeNotifier {
   Future<bool> markAllAsSeen() async {
     // Prevent concurrent operations
     if (_isMarkingAllRead || _isLoading || _isLoadingMore) {
-      debugPrint('⏳ Already processing, skipping markAllAsSeen');
       return false;
     }
     
@@ -194,21 +187,17 @@ class NotificationService extends ChangeNotifier {
       _notifications = _notifications.map((n) => n.copyWith(isSeen: true)).toList();
       notifyListeners();
       
-      debugPrint('🔄 Marking all notifications as read...');
       final response = await _apiService.post(ApiConstants.markAllAsSeen);
 
       if (response.success) {
-        debugPrint('✅ All notifications marked as seen');
         return true;
       } else {
         // Revert on failure
-        debugPrint('❌ Failed to mark all as read: ${response.message}');
         _unreadCount = previousUnreadCount;
         _notifications = previousNotifications;
         return false;
       }
     } catch (e) {
-      debugPrint('❌ Error marking all as seen: $e');
       // Don't set _error here - just return false and let UI handle it
       return false;
     } finally {
@@ -233,7 +222,6 @@ class NotificationService extends ChangeNotifier {
       }
       return _unreadCount;
     } catch (e) {
-      debugPrint('❌ Error getting unread count: $e');
       return _unreadCount;
     }
   }

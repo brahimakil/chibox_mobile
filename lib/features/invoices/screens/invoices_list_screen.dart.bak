@@ -1,0 +1,434 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import '../../../core/models/invoice_model.dart';
+import '../../../core/services/invoice_service.dart';
+import '../../../core/theme/theme.dart';
+import 'invoice_detail_screen.dart';
+
+class InvoicesListScreen extends StatefulWidget {
+  const InvoicesListScreen({super.key});
+
+  @override
+  State<InvoicesListScreen> createState() => _InvoicesListScreenState();
+}
+
+class _InvoicesListScreenState extends State<InvoicesListScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final ScrollController _scrollController = ScrollController();
+
+  final List<String?> _typeFilters = [null, 'product', 'shipping'];
+  final List<String> _tabLabels = ['All', 'Products', 'Shipping'];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: _tabLabels.length, vsync: this);
+    _tabController.addListener(_onTabChanged);
+    _scrollController.addListener(_onScroll);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<InvoiceService>().fetchInvoices(refresh: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_onTabChanged);
+    _tabController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      final type = _typeFilters[_tabController.index];
+      context.read<InvoiceService>().fetchInvoices(type: type, refresh: true);
+    }
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      final service = context.read<InvoiceService>();
+      if (!service.isLoading && service.hasMore) {
+        final type = _typeFilters[_tabController.index];
+        service.loadMore(type: type);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: Text(
+          'My Invoices',
+          style: AppTypography.headingSmall(
+            color: theme.textTheme.titleLarge?.color,
+          ),
+        ),
+        backgroundColor: theme.appBarTheme.backgroundColor,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new, color: theme.iconTheme.color),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: false,
+          indicatorColor: AppColors.primary500,
+          labelColor: AppColors.primary500,
+          unselectedLabelColor: isDark ? Colors.white54 : Colors.black54,
+          labelStyle:
+              const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          unselectedLabelStyle:
+              const TextStyle(fontWeight: FontWeight.normal, fontSize: 13),
+          indicatorWeight: 2,
+          tabs: _tabLabels.map((label) => Tab(text: label)).toList(),
+        ),
+      ),
+      body: Consumer<InvoiceService>(
+        builder: (context, invoiceService, child) {
+          if (invoiceService.isLoading && invoiceService.invoices.isEmpty) {
+            return _buildLoadingState(isDark);
+          }
+
+          if (invoiceService.error != null &&
+              invoiceService.invoices.isEmpty) {
+            return _buildErrorState(invoiceService.error!, isDark);
+          }
+
+          if (invoiceService.invoices.isEmpty) {
+            return _buildEmptyState(isDark);
+          }
+
+          return RefreshIndicator(
+            onRefresh: () {
+              final type = _typeFilters[_tabController.index];
+              return invoiceService.refresh(type: type);
+            },
+            color: AppColors.primary500,
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              itemCount: invoiceService.invoices.length +
+                  (invoiceService.hasMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == invoiceService.invoices.length) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                final invoice = invoiceService.invoices[index];
+                return _InvoiceCard(
+                  invoice: invoice,
+                  onTap: () => _navigateToDetail(invoice),
+                )
+                    .animate(delay: Duration(milliseconds: 50 * index))
+                    .fadeIn()
+                    .slideY(begin: 0.1, end: 0);
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _navigateToDetail(Invoice invoice) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InvoiceDetailScreen(invoice: invoice),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState(bool isDark) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 5,
+      itemBuilder: (context, index) {
+        return Container(
+          height: 100,
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(16),
+          ),
+        )
+            .animate(onPlay: (c) => c.repeat())
+            .shimmer(
+                duration: 1200.ms,
+                color: isDark ? Colors.white10 : Colors.white54);
+      },
+    );
+  }
+
+  Widget _buildErrorState(String error, bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Iconsax.warning_2, size: 64, color: AppColors.error),
+            const SizedBox(height: 16),
+            Text(
+              'Something went wrong',
+              style: AppTypography.headingSmall(
+                color: isDark ? Colors.white : Colors.black,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              error,
+              style: AppTypography.bodyMedium(
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () =>
+                  context.read<InvoiceService>().refresh(),
+              icon: const Icon(Iconsax.refresh),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary500,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Iconsax.receipt,
+              size: 64,
+              color: isDark ? Colors.white38 : Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No Invoices Yet',
+              style: AppTypography.headingSmall(
+                color: isDark ? Colors.white : Colors.black,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Your invoices will appear here after making payments',
+              style: AppTypography.bodyMedium(
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Invoice Card Widget
+class _InvoiceCard extends StatelessWidget {
+  final Invoice invoice;
+  final VoidCallback onTap;
+
+  const _InvoiceCard({
+    required this.invoice,
+    required this.onTap,
+  });
+
+  Color _getTypeColor() {
+    return invoice.isProduct ? AppColors.primary500 : Colors.blue;
+  }
+
+  IconData _getTypeIcon() {
+    return invoice.isProduct ? Iconsax.box : Iconsax.truck_fast;
+  }
+
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      return DateFormat('MMM dd, yyyy').format(date);
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final typeColor = _getTypeColor();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black26 : Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: typeColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(_getTypeIcon(),
+                              size: 18, color: typeColor),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              invoice.invoiceNumber,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              invoice.typeLabel,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: typeColor,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '\$${invoice.total.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary500,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: invoice.isVoid
+                                ? Colors.red.withOpacity(0.1)
+                                : Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            invoice.isVoid ? 'VOID' : 'PAID',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: invoice.isVoid
+                                  ? Colors.red
+                                  : Colors.green,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+                Divider(
+                  color: isDark
+                      ? Colors.white10
+                      : Colors.black.withOpacity(0.05),
+                ),
+                const SizedBox(height: 8),
+
+                // Footer Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Iconsax.box,
+                            size: 12,
+                            color: isDark ? Colors.white54 : Colors.black45),
+                        const SizedBox(width: 4),
+                        Text(
+                          invoice.orderNumber,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white54 : Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      _formatDate(invoice.createdAt),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? Colors.white54 : Colors.black45,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

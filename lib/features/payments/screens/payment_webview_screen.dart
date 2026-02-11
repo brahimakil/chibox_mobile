@@ -68,14 +68,12 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             });
           },
           onPageStarted: (url) {
-            debugPrint('📄 Page started: $url');
             setState(() {
               _isLoading = true;
               _currentUrl = url;
             });
           },
           onPageFinished: (url) {
-            debugPrint('✅ Page finished: $url');
             setState(() {
               _isLoading = false;
               _currentUrl = url;
@@ -83,12 +81,10 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             _checkForPaymentCompletion(url);
           },
           onNavigationRequest: (request) {
-            debugPrint('🔗 Navigation: ${request.url}');
             // Allow all navigation within payment flow
             return NavigationDecision.navigate;
           },
           onWebResourceError: (error) {
-            debugPrint('❌ WebView error: ${error.description}');
             // Don't show error for minor issues, only major ones
             if (error.errorType == WebResourceErrorType.hostLookup ||
                 error.errorType == WebResourceErrorType.timeout ||
@@ -100,12 +96,10 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             }
           },
           onHttpError: (error) {
-            debugPrint('❌ HTTP error: ${error.response?.statusCode}');
             // Ignore 404 on redirect pages - they're temporary
             if (error.response?.statusCode == 404) {
               final url = error.request?.uri.toString() ?? '';
               if (url.contains('/payment/success') || url.contains('/payment/failure')) {
-                debugPrint('⚠️ Ignoring 404 on payment redirect page');
                 return;
               }
             }
@@ -148,17 +142,13 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
 
     try {
       final paymentService = Provider.of<PaymentService>(context, listen: false);
-      debugPrint('🔍 Polling verify for: ${widget.externalId}');
       final result = await paymentService.verifyPayment(
         externalId: widget.externalId,
       );
 
-      debugPrint('🔍 Verify result: verified=${result.verified}, status=${result.status}, orderId=${result.orderId}');
-
       if (!mounted) return;
 
       if (result.verified && result.isPaymentSuccess) {
-        debugPrint('✅ Payment verified as SUCCESS - popping webview');
         _pollTimer?.cancel();
         Navigator.of(context).pop(PaymentWebViewResult(
           success: true,
@@ -167,7 +157,6 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
           orderId: result.orderId,
         ));
       } else if (result.verified && result.isPaymentFailed) {
-        debugPrint('❌ Payment verified as FAILED - popping webview');
         _pollTimer?.cancel();
         if (!silent) {
           Navigator.of(context).pop(PaymentWebViewResult(
@@ -178,10 +167,8 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
           ));
         }
       } else {
-        debugPrint('⏳ Payment still pending, continuing to poll...');
       }
     } catch (e) {
-      debugPrint('❌ Verification error: $e');
     } finally {
       _isVerifying = false; // No setState - silent operation
     }

@@ -1,8 +1,6 @@
 /// Shipping Models for ChiHelo
 /// Handles shipping method selection and cost calculation
 
-import 'package:flutter/foundation.dart';
-
 /// Shipping method type
 enum ShippingMethodType {
   air,
@@ -364,13 +362,8 @@ class ShippingComparison {
   });
 
   factory ShippingComparison.fromJson(Map<String, dynamic> json) {
-    debugPrint('🔍 ShippingComparison.fromJson input: $json');
     final data = json['data'] ?? json;
-    debugPrint('🔍 ShippingComparison data: $data');
     final methods = data['methods'] ?? {};
-    debugPrint('🔍 ShippingComparison methods: $methods');
-    debugPrint('🔍 Air method data: ${methods['air']}');
-    debugPrint('🔍 Sea method data: ${methods['sea']}');
     
     // Parse processing product IDs
     final processingIds = <int>[];
@@ -412,7 +405,6 @@ class ShippingComparison {
   bool isProductProcessing(int productId) {
     // Check if in the processing list
     if (processingProductIds.contains(productId)) {
-      debugPrint('   🔄 Product $productId in processingProductIds list');
       return true;
     }
     
@@ -422,10 +414,6 @@ class ShippingComparison {
     
     final airProcessing = airItem?.isAiProcessing ?? false;
     final seaProcessing = seaItem?.isAiProcessing ?? false;
-    
-    if (airProcessing || seaProcessing) {
-      debugPrint('   🔄 Product $productId: airProcessing=$airProcessing, seaProcessing=$seaProcessing');
-    }
     
     return airProcessing || seaProcessing;
   }

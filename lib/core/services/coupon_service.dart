@@ -49,22 +49,16 @@ class CouponService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('🎟️ Fetching public coupons from: ${ApiConstants.getPublicCoupons}');
       final response = await _apiService.get(ApiConstants.getPublicCoupons);
-      
-      debugPrint('🎟️ Response success: ${response.success}, data: ${response.data}');
 
       if (response.success && response.data != null) {
         final List<dynamic> data = response.data is List ? response.data : [];
         _publicCoupons = data.map((json) => Coupon.fromJson(json)).toList();
-        debugPrint('🎟️ Loaded ${_publicCoupons.length} public coupons');
       } else {
         _error = response.message ?? 'Failed to fetch coupons';
-        debugPrint('🎟️ Error: $_error');
       }
     } catch (e) {
       _error = 'Error fetching coupons: $e';
-      debugPrint('🎟️ Exception: $_error');
     }
 
     _isLoadingPublic = false;
@@ -88,7 +82,6 @@ class CouponService extends ChangeNotifier {
       }
     } catch (e) {
       _error = 'Error fetching your coupons: $e';
-      debugPrint(_error);
     }
 
     _isLoadingMyCoupons = false;
@@ -121,7 +114,6 @@ class CouponService extends ChangeNotifier {
       }
     } catch (e) {
       _error = 'Error claiming coupon: $e';
-      debugPrint(_error);
     }
 
     _isClaiming = false;
@@ -163,7 +155,6 @@ class CouponService extends ChangeNotifier {
       }
     } catch (e) {
       _error = 'Error validating coupon: $e';
-      debugPrint(_error);
     }
 
     _isValidating = false;
@@ -212,7 +203,6 @@ class CouponService extends ChangeNotifier {
       }
     } catch (e) {
       _error = 'Error validating coupon: $e';
-      debugPrint(_error);
     }
 
     _isValidating = false;

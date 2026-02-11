@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/cart_service.dart';
+import '../../core/services/fcm_service.dart';
 import '../../core/services/navigation_provider.dart';
 import '../../core/theme/theme.dart';
 import '../home/screens/home_screen.dart';
@@ -30,6 +31,9 @@ class _MainShellState extends State<MainShell> {
     // Fetch cart data on app start
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<CartService>(context, listen: false).fetchCart();
+      // Process any pending push notification (cold-start / background tap)
+      // This navigates directly to the target screen if a notification was tapped
+      FcmService().processPendingNotification(context);
     });
   }
 

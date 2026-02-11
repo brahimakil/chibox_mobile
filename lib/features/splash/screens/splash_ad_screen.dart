@@ -10,6 +10,7 @@ import 'package:chihelo_frontend/core/services/cart_service.dart';
 import 'package:chihelo_frontend/core/services/wishlist_service.dart';
 import 'package:chihelo_frontend/core/services/notification_service.dart';
 import 'package:chihelo_frontend/core/theme/theme.dart';
+import 'package:chihelo_frontend/core/utils/notification_navigation_helper.dart';
 import 'package:chihelo_frontend/main.dart';
 import 'package:video_player/video_player.dart';
 import 'package:lottie/lottie.dart';
@@ -102,7 +103,6 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
     
     if (isLocalAsset) {
       // Use local asset video
-      debugPrint('🎬 Playing from local asset: ${widget.ad.mediaUrl}');
       _videoController = VideoPlayerController.asset(widget.ad.mediaUrl);
     } else {
       // Try to use cached video first for instant playback
@@ -110,11 +110,9 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
       
       if (cachedPath != null) {
         // Use cached local file - instant playback!
-        debugPrint('🎬 Playing from cache: $cachedPath');
         _videoController = VideoPlayerController.file(File(cachedPath));
       } else {
         // Fallback to network (and cache in background for next time)
-        debugPrint('🎬 Playing from network: ${widget.ad.mediaUrl}');
         _videoController = VideoPlayerController.networkUrl(
           Uri.parse(widget.ad.mediaUrl),
         );
@@ -134,10 +132,8 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
         });
       }
     } catch (e) {
-      debugPrint('Error initializing video: $e');
       // If cached file fails, try network (only for non-local assets)
       if (!isLocalAsset && cachedPath != null) {
-        debugPrint('🎬 Cache failed, trying network...');
         _videoController?.dispose();
         _videoController = VideoPlayerController.networkUrl(
           Uri.parse(widget.ad.mediaUrl),
@@ -152,7 +148,6 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
             });
           }
         } catch (e2) {
-          debugPrint('Network video also failed: $e2');
         }
       }
     }
@@ -192,12 +187,66 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
     // Track click if has link, otherwise track skip
     if (widget.ad.hasLink) {
       _splashAdService.trackClick(widget.ad.id);
-      debugPrint('📱 Ad tapped: ${widget.ad.linkType} -> ${widget.ad.linkValue}');
+
+      // Capture navigator before the route replacement disposes this widget
+      final navigator = Navigator.of(context);
+      final ad = widget.ad;
+
+      _loadSecondaryData();
+
+      // Navigate to home first
+      navigator.pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const AppWrapper(),
+          transitionsBuilder: (_, animation, __, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          transitionDuration: const Duration(milliseconds: 400),
+        ),
+      );
+
+      // After transition settles, navigate to the linked content
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _navigateToLinkedContent(navigator, ad);
+      });
     } else {
       _splashAdService.trackSkip(widget.ad.id);
+      _navigateToHome();
+    }
+  }
+
+  void _navigateToLinkedContent(NavigatorState navigator, SplashAdModel ad) {
+    if (!ad.hasLink) return;
+    
+    // Map splash ad link_type to notification_type for the navigator
+    String? navType;
+    int? targetId;
+    String? actionUrl;
+    
+    switch (ad.linkType) {
+      case 'product':
+        navType = 'product';
+        targetId = int.tryParse(ad.linkValue ?? '');
+        break;
+      case 'category':
+        navType = 'category';
+        targetId = int.tryParse(ad.linkValue ?? '');
+        break;
+      case 'url':
+        navType = 'web';
+        actionUrl = ad.linkValue;
+        break;
     }
     
-    _navigateToHome();
+    if (navType != null) {
+      // Use navigator.context which is valid after route replacement
+      NotificationNavigationHelper.navigate(
+        context: navigator.context,
+        notificationType: navType,
+        targetId: targetId,
+        actionUrl: actionUrl,
+      );
+    }
   }
 
   void _navigateToHome() {
@@ -231,12 +280,9 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
         wishlistService.fetchBoards(silent: true),
         notificationService.getUnreadCount(),
       ], eagerError: false).then((_) {
-        debugPrint('✅ Secondary data loaded in background!');
       }).catchError((e) {
-        debugPrint('⚠️ Secondary preload error (non-blocking): $e');
       });
     } catch (e) {
-      debugPrint('⚠️ Secondary preload error: $e');
     }
   }
 
@@ -281,14 +327,13 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
           ),
           
           // Tap to explore hint (if has link)
-          // TEMPORARILY DISABLED: Hiding tap to explore button
-          // if (widget.ad.hasLink)
-          //   Positioned(
-          //     bottom: MediaQuery.of(context).padding.bottom + 60,
-          //     left: 0,
-          //     right: 0,
-          //     child: _buildTapHint(isDark),
-          //   ),
+          if (widget.ad.hasLink)
+            Positioned(
+              bottom: MediaQuery.of(context).padding.bottom + 60,
+              left: 0,
+              right: 0,
+              child: _buildTapHint(isDark),
+            ),
         ],
       ),
     );
@@ -306,6 +351,20 @@ class _SplashAdScreenState extends State<SplashAdScreen> with SingleTickerProvid
 
   Widget _buildImageContent(bool isDark) {
     final backgroundColor = isDark ? Colors.black : Colors.white;
+    final isLocalAsset = widget.ad.mediaUrl.startsWith('assets/');
+    
+    if (isLocalAsset) {
+      return Container(
+        color: backgroundColor,
+        alignment: Alignment.center,
+        child: Image.asset(
+          widget.ad.mediaUrl,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+        ),
+      );
+    }
     
     return Container(
       color: backgroundColor,

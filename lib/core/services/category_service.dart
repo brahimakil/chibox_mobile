@@ -33,14 +33,11 @@ class CategoryService extends ChangeNotifier {
     }
     
     if (!_hasMore) {
-      debugPrint('🚫 No more categories to load. Stopping.');
       return;
     }
 
     _isLoading = true;
     notifyListeners();
-
-    debugPrint('📥 Fetching categories page $_currentPage...');
 
     try {
       final response = await _apiService.get<Map<String, dynamic>>(
@@ -57,19 +54,15 @@ class CategoryService extends ChangeNotifier {
         // Handle categories list
         final List<dynamic> categoriesList = data['categories'] ?? [];
         final newCategories = categoriesList.map((json) => ProductCategory.fromJson(json)).toList();
-        
-        debugPrint('✅ Received ${newCategories.length} categories');
 
         // Handle pagination
         if (data['pagination'] != null) {
           _hasMore = data['pagination']['has_next'] ?? false;
-          debugPrint('📄 Pagination: has_next = $_hasMore');
         } else {
           // Fallback if pagination data is missing
           if (newCategories.length < _perPage) {
             _hasMore = false;
           }
-          debugPrint('⚠️ No pagination data. Fallback has_next = $_hasMore');
         }
         
         if (refresh) {
@@ -81,11 +74,9 @@ class CategoryService extends ChangeNotifier {
         _currentPage++;
       } else {
         _error = response.message;
-        debugPrint('❌ API Error: $_error');
       }
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Exception: $_error');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -96,11 +87,8 @@ class CategoryService extends ChangeNotifier {
   /// Returns a map with 'subcategories' list and 'pagination' info
   /// Uses in-memory cache and persistent cache for fast subsequent loads
   Future<Map<String, dynamic>> fetchSubcategories(int categoryId, {int page = 1, int perPage = 30, bool forceRefresh = false}) async {
-    debugPrint('📥 Fetching subcategories for category $categoryId, page $page...');
-
     // Check in-memory cache first (fastest)
     if (!forceRefresh && page == 1 && _subcategoriesCache.containsKey(categoryId)) {
-      debugPrint('⚡ Using in-memory cached subcategories for $categoryId');
       return {
         'subcategories': _subcategoriesCache[categoryId]!,
         'pagination': _subcategoriesPaginationCache[categoryId] ?? {},
@@ -120,7 +108,6 @@ class CategoryService extends ChangeNotifier {
         _subcategoriesCache[categoryId] = subcategories;
         _subcategoriesPaginationCache[categoryId] = pagination;
         
-        debugPrint('⚡ Using disk cached subcategories for $categoryId: ${subcategories.length} items');
         return {
           'subcategories': subcategories,
           'pagination': pagination,
@@ -145,8 +132,6 @@ class CategoryService extends ChangeNotifier {
         final List<dynamic> subcatList = data['subcategories'] ?? [];
         final subcategories = subcatList.map((json) => ProductCategory.fromJson(json)).toList();
         final pagination = data['pagination'] as Map<String, dynamic>? ?? {};
-        
-        debugPrint('✅ Received ${subcategories.length} subcategories from API');
 
         // Update caches
         if (page == 1) {
@@ -171,11 +156,9 @@ class CategoryService extends ChangeNotifier {
           'pagination': pagination,
         };
       } else {
-        debugPrint('❌ API Error: ${response.message}');
         return {'subcategories': <ProductCategory>[], 'pagination': {}};
       }
     } catch (e) {
-      debugPrint('❌ Exception fetching subcategories: $e');
       return {'subcategories': <ProductCategory>[], 'pagination': {}};
     }
   }
@@ -203,8 +186,6 @@ class CategoryService extends ChangeNotifier {
       return CategorySearchResponse(results: [], similarResults: []);
     }
     
-    debugPrint('🔍 Searching categories for: "$keyword"');
-    
     try {
       final response = await _apiService.get<Map<String, dynamic>>(
         ApiConstants.searchCategories,
@@ -223,18 +204,15 @@ class CategoryService extends ChangeNotifier {
         final List<dynamic> similarList = response.data!['similar_categories'] ?? [];
         final similarResults = _parseSearchResults(similarList);
         
-        debugPrint('✅ Found ${results.length} exact + ${similarResults.length} similar categories for "$keyword"');
         return CategorySearchResponse(
           results: results,
           similarResults: similarResults,
           keyword: keyword,
         );
       } else {
-        debugPrint('❌ Search API Error: ${response.message}');
         return CategorySearchResponse(results: [], similarResults: []);
       }
     } catch (e) {
-      debugPrint('❌ Exception searching categories: $e');
       return CategorySearchResponse(results: [], similarResults: []);
     }
   }

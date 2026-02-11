@@ -21,11 +21,15 @@ import '../../product/screens/product_details_screen.dart';
 class CategoryProductsScreen extends StatefulWidget {
   final ProductCategory category;
   final List<ProductCategory>? siblingCategories; // Kept for backward compatibility
+  /// If set, the screen will fetch the full category from the API on init.
+  /// This allows instant navigation from banners without a loading dialog.
+  final int? lazyLoadCategoryId;
 
   const CategoryProductsScreen({
     super.key,
     required this.category,
     this.siblingCategories,
+    this.lazyLoadCategoryId,
   });
 
   @override
@@ -63,8 +67,13 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     // Always start with the passed category as selected
     _selectedCategory = widget.category;
     
-    // Load display categories (selected + siblings)
-    _loadDisplayCategories();
+    // If opened via lazy-load (e.g. banner tap), fetch full category first
+    if (widget.lazyLoadCategoryId != null) {
+      _fetchFullCategoryThenLoad();
+    } else {
+      // Load display categories (selected + siblings)
+      _loadDisplayCategories();
+    }
     
     _wishlistSubscription = WishlistHelper.onStatusChanged.listen((update) {
       if (!mounted) return;
@@ -77,12 +86,42 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     });
 
     _scrollController.addListener(_onScroll);
-    _fetchProducts(refresh: true);
+    // Only fetch products immediately if not lazy-loading
+    // (lazy-load path calls _fetchProducts after resolving the category)
+    if (widget.lazyLoadCategoryId == null) {
+      _fetchProducts(refresh: true);
+    }
     
     // NOTE: HomeService listener removed - updateProductInCache no longer notifies
     // This was causing expensive UI rebuilds. Cache updates happen silently.
   }
   
+  /// Fetch full category data from API for lazy-load navigation
+  Future<void> _fetchFullCategoryThenLoad() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _isLoadingCategories = true;
+    });
+
+    try {
+      final homeService = Provider.of<HomeService>(context, listen: false);
+      final fullCategory = await homeService.fetchCategoryWithSubcategories(
+        widget.lazyLoadCategoryId!,
+      );
+
+      if (mounted && fullCategory != null) {
+        setState(() {
+          _selectedCategory = fullCategory;
+        });
+      }
+    } catch (_) {}
+
+    // Now load subcategories/siblings and products normally
+    _loadDisplayCategories();
+    _fetchProducts(refresh: true);
+  }
+
   /// Load categories to display in top bar: selected category + its siblings
   Future<void> _loadDisplayCategories() async {
     if (!mounted) return;
@@ -111,7 +150,6 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
           );
           children = response['subcategories'] as List<ProductCategory>? ?? [];
         } catch (e) {
-          debugPrint('❌ Error fetching subcategories: $e');
         }
       }
     }
@@ -123,7 +161,6 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         _displayCategories = [_selectedCategory, ...children];
         _isLoadingCategories = false;
       });
-      debugPrint('📂 Display: ${_selectedCategory.name} + ${children.length} children');
     } else {
       // Category has no children - find and show siblings (categories with same parent)
       await _loadSiblingCategories();
@@ -151,7 +188,6 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
           final response = await categoryService.fetchSubcategories(parentId, page: 1, perPage: 50);
           siblings = response['subcategories'] as List<ProductCategory>? ?? [];
         } catch (e) {
-          debugPrint('❌ Error fetching siblings: $e');
         }
       }
       
@@ -160,7 +196,6 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
           _displayCategories = siblings;
           _isLoadingCategories = false;
         });
-        debugPrint('📂 Display siblings: ${siblings.length} items');
         return;
       }
     }
@@ -224,7 +259,6 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
           _isLoading = false;
           _hasMore = true; // Assume more pages exist
         });
-        debugPrint('⚡ Instant load: ${cachedProducts.length} cached products for category ${_selectedCategory.id}');
         // Fetch fresh data in background
         _fetchProductsInBackground();
         return;
@@ -275,7 +309,6 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error fetching products: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -309,11 +342,9 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
             _hasMore = pagination?['has_next'] == true;
             _currentPage = 2;
           });
-          debugPrint('🔄 Background refresh: updated to ${newProducts.length} products');
         }
       }
     } catch (e) {
-      debugPrint('Background fetch error: $e');
     }
   }
 
@@ -341,7 +372,6 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
       final children = response['subcategories'] as List<ProductCategory>? ?? [];
       return children.isNotEmpty;
     } catch (e) {
-      debugPrint('❌ Error checking children: $e');
       return false;
     }
   }
@@ -349,8 +379,6 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   /// When a category is tapped from the top bar
   void _onCategorySelected(ProductCategory category) async {
     if (category.id == _selectedCategory.id) return;
-    
-    debugPrint('📂 Category tapped: ${category.name} (id: ${category.id})');
     
     // INSTANT FEEDBACK: Immediately show selection and start loading
     setState(() {

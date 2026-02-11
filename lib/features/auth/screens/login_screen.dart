@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/theme.dart';
@@ -101,12 +102,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     children: [
                       // Logo
-                      Image.asset(
-                        isDark 
-                            ? 'assets/images/chihelo dark color  2363x2363.png'
-                            : 'assets/images/logo splash screen dark text 960x960.png',
-                        height: 120,
-                        fit: BoxFit.contain,
+                      SizedBox(
+                        width: 100,
+                        height: 100,
+                        child: Center(
+                          child: SvgPicture.asset(
+                            'assets/animations/chibox logo box.svg',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
                       )
                           .animate()
                           .scale(delay: 100.ms, duration: 500.ms, curve: Curves.elasticOut),

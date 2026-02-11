@@ -53,7 +53,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_new, color: theme.iconTheme.color),
           onPressed: () {
-            debugPrint('🔴 OrderDetailsScreen: Back button pressed, mounted=$mounted');
             Navigator.pop(context);
           },
         ),
@@ -1064,6 +1063,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   String _formatDate(String dateString) {
     try {
       final date = DateTime.parse(dateString);
+      // track_date is date-only (no time component) — show date only
+      if (!dateString.contains('T') && !dateString.contains(' ')) {
+        return DateFormat('MMM dd, yyyy').format(date);
+      }
       return DateFormat('MMM dd, yyyy • hh:mm a').format(date);
     } catch (e) {
       return dateString;

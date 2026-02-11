@@ -7,6 +7,7 @@ import '../../../core/services/cart_service.dart';
 import '../../../core/services/wishlist_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/services/splash_ad_service.dart';
+import '../../../core/services/fcm_service.dart';
 import '../../../core/models/splash_ad_model.dart';
 import '../../../main.dart';
 import 'splash_ad_screen.dart';
@@ -21,6 +22,7 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   SplashAdModel? _splashAd;
   final SplashAdService _splashAdService = SplashAdService();
+  bool _isReady = false; // true once splash ad media is ready to show
   
   // Store services before navigation to avoid context issues
   late CategoryService _categoryService;
@@ -35,8 +37,6 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _preloadAndNavigate() async {
-    debugPrint('🚀 Starting splash preload...');
-    
     // Get services from context and store them BEFORE any navigation
     final homeService = context.read<HomeService>();
     _categoryService = context.read<CategoryService>();
@@ -44,42 +44,59 @@ class _SplashScreenState extends State<SplashScreen> {
     _wishlistService = context.read<WishlistService>();
     _notificationService = context.read<NotificationService>();
     
-    // TEMPORARILY HARDCODED: Use local video asset instead of fetching from server
-    _splashAd = SplashAdModel(
-      id: 0,
-      title: 'ChiHelo Intro',
-      mediaType: 'video',
-      mediaUrl: 'assets/animations/vidforchihelo.mp4', // Local asset
-      linkType: 'none',
-      skipDuration: 3,
-      totalDuration: 10,
-    );
-    
-    debugPrint('✅ Splash ad ready (using local video)');
+    // Try to fetch active splash ad from the server
+    try {
+      final serverAd = await _splashAdService.getActiveSplashAd();
+      if (serverAd != null) {
+        _splashAd = serverAd;
+      }
+    } catch (_) {
+      // No server ad — will skip splash ad screen entirely
+    }
 
     if (!mounted) return;
 
+    // Pre-buffer video ads BEFORE leaving the logo screen
+    if (_splashAd != null && _splashAd!.isVideo && !_splashAd!.mediaUrl.startsWith('assets/')) {
+      try {
+        final cachedPath = await _splashAdService.getCachedVideoPath(_splashAd!.mediaUrl);
+        if (cachedPath == null) {
+          await _splashAdService.downloadAndCacheVideo(_splashAd!.mediaUrl);
+        }
+      } catch (_) {
+        // If pre-cache fails, still proceed — SplashAdScreen will handle it
+      }
+    }
+
+    if (!mounted) return;
+    _isReady = true;
+
     // Wait for first frame to complete before navigating
-    // This prevents the "!_debugLocked" assertion error
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       
-      // Let the Lottie animation play for a moment (1.5 seconds)
+      // If the app was opened from a push notification tap,
+      // skip everything and go straight to the app.
+      if (FcmService().pendingNotificationData != null) {
+        _navigateToHome();
+        homeService.fetchHomeData().catchError((e) {});
+        return;
+      }
+      
+      // Let the Lottie animation play for a minimum of 1.5 seconds
       await Future.delayed(const Duration(milliseconds: 1500));
       
       if (!mounted) return;
       
-      // Navigate to video IMMEDIATELY - don't wait for home data!
-      // Home data will load in background while video plays
-      _showSplashAd();
+      // If we have a server splash ad, show it; otherwise go straight to app
+      if (_splashAd != null) {
+        _showSplashAd();
+      } else {
+        _navigateToHome();
+      }
       
-      // Start loading home data in background (non-blocking)
-      // This runs while the video is playing
-      homeService.fetchHomeData().then((_) {
-        debugPrint('✅ Home data loaded in background during video playback');
-      }).catchError((e) {
-        debugPrint('⚠️ Home data preload error (non-blocking): $e');
-      });
+      // Start loading home data in background
+      homeService.fetchHomeData().catchError((e) {});
     });
   }
 
@@ -124,10 +141,7 @@ class _SplashScreenState extends State<SplashScreen> {
         _wishlistService.fetchBoards(silent: true),
         _notificationService.getUnreadCount(),
       ], eagerError: false);
-      
-      debugPrint('✅ Secondary data loaded in background!');
     } catch (e) {
-      debugPrint('⚠️ Secondary preload error (non-blocking): $e');
     }
   }
 
@@ -144,7 +158,7 @@ class _SplashScreenState extends State<SplashScreen> {
           width: 200,
           height: 200,
           fit: BoxFit.contain,
-          repeat: false, // Don't repeat - we navigate immediately
+          repeat: !_isReady, // Keep looping until media is ready
         ),
       ),
     );

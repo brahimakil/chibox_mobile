@@ -29,3 +29,7 @@
 
 # ML Kit specific for Object Detection
 -keep class com.google.mlkit.vision.objects.** { *; }
+
+# WebView
+-keep class android.webkit.** { *; }
+-dontwarn android.webkit.**

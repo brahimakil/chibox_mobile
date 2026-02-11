@@ -15,6 +15,7 @@ import '../../../core/models/home_data_model.dart' show GridElement;
 import '../../../core/models/product_model.dart';
 import '../../../core/models/category_model.dart' show ProductCategory;
 import '../../../core/utils/image_helper.dart';
+import '../../../core/utils/notification_navigation_helper.dart';
 import '../../product/screens/product_details_screen.dart';
 import '../widgets/floating_header.dart';
 import '../widgets/home_categories_section.dart';
@@ -576,15 +577,28 @@ class _HomeScreenState extends State<HomeScreen> {
                           _selectedCategoryNotifier.value = null;
                           _isCategoriesLoadingNotifier.value = false;
                         } else {
-                          // Brief loading feedback for UX
+                          // Show loading skeleton immediately
                           _isCategoriesLoadingNotifier.value = true;
-                          await Future.delayed(const Duration(milliseconds: 200));
+                          
                           // Find the full category with subcategories from CategoryService
                           final categoryService = context.read<CategoryService>();
-                          final fullCategory = categoryService.categories.firstWhere(
+                          var fullCategory = categoryService.categories.firstWhere(
                             (c) => c.id == category.id,
                             orElse: () => category,
                           );
+                          
+                          // Always fetch subcategories if not already loaded.
+                          // On cold start, CategoryService hasn't loaded yet and
+                          // home API cache doesn't include subcategory data, so
+                          // we must fetch them from the subcategories endpoint.
+                          if (fullCategory.subcategories == null || fullCategory.subcategories!.isEmpty) {
+                            final result = await categoryService.fetchSubcategories(fullCategory.id);
+                            final subcategories = result['subcategories'] as List<ProductCategory>?;
+                            if (subcategories != null && subcategories.isNotEmpty) {
+                              fullCategory = fullCategory.copyWith(subcategories: subcategories);
+                            }
+                          }
+                          
                           _selectedCategoryNotifier.value = fullCategory;
                           _isCategoriesLoadingNotifier.value = false;
                         }
@@ -992,6 +1006,23 @@ class _BannerSection extends StatelessWidget {
     required this.indexNotifier,
   });
 
+  void _handleBannerTap(BuildContext context, Map<String, dynamic>? actions) {
+    if (actions == null || actions.isEmpty) return;
+
+    final type = actions['type']?.toString();
+    final id = actions['id'] != null
+        ? int.tryParse(actions['id'].toString())
+        : null;
+    final url = actions['url']?.toString();
+
+    NotificationNavigationHelper.navigate(
+      context: context,
+      notificationType: type,
+      targetId: id,
+      actionUrl: url,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (homeService.gridElements.isEmpty) {
@@ -1018,17 +1049,21 @@ class _BannerSection extends StatelessWidget {
               itemBuilder: (context, index) {
                 final element = homeService.gridElements[index];
                 final imageUrl = element is GridElement ? element.imageUrl : '';
+                final actions = element is GridElement ? element.actions : null;
 
-                return CachedNetworkImage(
-                  imageUrl: ImageHelper.parse(imageUrl) ?? '',
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: bannerHeight,
-                  memCacheWidth: 800,
-                  placeholder: (_, __) => Container(color: AppColors.neutral100),
-                  errorWidget: (_, __, ___) => Container(
-                    color: AppColors.neutral200,
-                    child: const Icon(Iconsax.image, size: 48, color: AppColors.neutral400),
+                return GestureDetector(
+                  onTap: () => _handleBannerTap(context, actions),
+                  child: CachedNetworkImage(
+                    imageUrl: ImageHelper.parse(imageUrl) ?? '',
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: bannerHeight,
+                    memCacheWidth: 800,
+                    placeholder: (_, __) => Container(color: AppColors.neutral100),
+                    errorWidget: (_, __, ___) => Container(
+                      color: AppColors.neutral200,
+                      child: const Icon(Iconsax.image, size: 48, color: AppColors.neutral400),
+                    ),
                   ),
                 );
               },
@@ -1162,12 +1197,12 @@ class _PriceDealsTabsSection extends StatefulWidget {
 class _PriceDealsTabsSectionState extends State<_PriceDealsTabsSection> {
   int _selectedTab = 0;
 
-  // Price ranges for tabs
+  // Price ranges for tabs — each range is exclusive (no overlap)
   static const List<Map<String, dynamic>> _priceRanges = [
     {'label': '\$1', 'min': 0.01, 'max': 1.0, 'color': Color(0xFF00C853)},
-    {'label': '\$2', 'min': 1.01, 'max': 2.0, 'color': Color(0xFF2196F3)},
-    {'label': '\$5', 'min': 2.01, 'max': 5.0, 'color': Color(0xFF9C27B0)},
-    {'label': '\$7', 'min': 5.01, 'max': 7.0, 'color': Color(0xFFFF9800)},
+    {'label': '\$2', 'min': 1.0, 'max': 2.0, 'color': Color(0xFF2196F3)},
+    {'label': '\$5', 'min': 2.0, 'max': 5.0, 'color': Color(0xFF9C27B0)},
+    {'label': '\$8', 'min': 5.0, 'max': 8.0, 'color': Color(0xFFFF9800)},
   ];
 
   @override

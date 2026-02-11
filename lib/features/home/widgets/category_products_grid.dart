@@ -128,7 +128,6 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
       // AGGRESSIVE PREFETCH: Start loading at just 1% scroll (user barely scrolled)
       // This ensures products are ready before user even sees the loading indicator
       if (scrollPercentage >= 1 && !_isPrefetching && !_isLoadingMore && _hasMore && !_isLoading) {
-        debugPrint('🚀 SMART PREFETCH: ${scrollPercentage.toStringAsFixed(1)}% scrolled - prefetching next page');
         _isPrefetching = true;
         _fetchProducts().then((_) => _isPrefetching = false);
       }
@@ -196,7 +195,6 @@ class CategoryProductsGridState extends State<CategoryProductsGrid> {
         });
       }
     } catch (e) {
-      debugPrint('Error fetching products: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;

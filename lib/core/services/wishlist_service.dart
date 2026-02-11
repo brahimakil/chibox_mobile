@@ -53,7 +53,6 @@ class WishlistService extends ChangeNotifier {
       }
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Error fetching boards: $e');
     } finally {
       if (!silent) {
         _isLoading = false;
@@ -138,7 +137,6 @@ class WishlistService extends ChangeNotifier {
       }
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Error fetching wishlist: $e');
     } finally {
       if (!silent) {
         _isLoading = false;
@@ -178,7 +176,6 @@ class WishlistService extends ChangeNotifier {
         }
       }
     } catch (e) {
-      debugPrint('Error populating previews: $e');
     }
   }
 
@@ -195,7 +192,6 @@ class WishlistService extends ChangeNotifier {
         return true;
       }
     } catch (e) {
-      debugPrint('❌ Error creating board: $e');
     }
     return false;
   }
@@ -213,7 +209,6 @@ class WishlistService extends ChangeNotifier {
         return true;
       }
     } catch (e) {
-      debugPrint('❌ Error updating board: $e');
     }
     return false;
   }
@@ -231,7 +226,6 @@ class WishlistService extends ChangeNotifier {
         return true;
       }
     } catch (e) {
-      debugPrint('❌ Error deleting board: $e');
     }
     return false;
   }
@@ -273,7 +267,6 @@ class WishlistService extends ChangeNotifier {
         return true;
       }
     } catch (e) {
-      debugPrint('❌ Error toggling favorite: $e');
     }
     return false;
   }

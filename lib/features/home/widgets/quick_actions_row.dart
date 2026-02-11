@@ -7,6 +7,7 @@ import '../../../shared/widgets/guest_guard.dart';
 import '../../address/screens/address_list_screen.dart';
 import '../../orders/screens/orders_list_screen.dart';
 import '../../notifications/screens/notifications_screen.dart';
+import '../../invoices/screens/invoices_list_screen.dart';
 
 /// SHEIN-style Quick Actions Row - displays 3 shortcut buttons
 class QuickActionsRow extends StatelessWidget {
@@ -81,6 +82,20 @@ class QuickActionsRow extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const AddressListScreen()),
+                );
+              });
+            },
+          ),
+          _buildDivider(isDark),
+          _QuickActionItem(
+            icon: Iconsax.receipt,
+            label: 'Invoices',
+            isDark: isDark,
+            onTap: () {
+              _handleProtectedAction(context, 'Invoices', () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const InvoicesListScreen()),
                 );
               });
             },

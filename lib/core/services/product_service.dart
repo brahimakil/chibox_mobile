@@ -31,7 +31,6 @@ class ProductService extends ChangeNotifier {
   void clearCache() {
     _productCache.clear();
     _productCacheTimestamps.clear();
-    debugPrint('🧹 Product details cache cleared');
     notifyListeners();
   }
 
@@ -45,7 +44,6 @@ class ProductService extends ChangeNotifier {
   void clearProductCache(int id) {
     _productCache.remove(id);
     _productCacheTimestamps.remove(id);
-    debugPrint('🗑️ Cleared cache for product $id');
   }
   
   /// Check if cached product is stale (older than _cacheMaxAgeDays)
@@ -55,10 +53,6 @@ class ProductService extends ChangeNotifier {
     
     final age = DateTime.now().difference(timestamp);
     final isStale = age.inDays >= _cacheMaxAgeDays;
-    
-    if (isStale) {
-      debugPrint('⏰ Product $id cache is stale (${age.inDays} days old, max: $_cacheMaxAgeDays days)');
-    }
     
     return isStale;
   }
@@ -79,17 +73,11 @@ class ProductService extends ChangeNotifier {
       final isStale = _isCacheStale(id);
       
       if (wasFullyFetched && !isStale) {
-        debugPrint('📦 Returning cached details for product $id (fully fetched)');
         return cached;
-      } else if (wasFullyFetched && isStale) {
-        debugPrint('🔄 Cache is stale for product $id, refreshing from API...');
-      } else {
-        debugPrint('🔄 Cache exists but was from listing for product $id, fetching full details...');
       }
     }
     
     if (forceRefresh) {
-      debugPrint('🔄 Force refresh requested for product $id, bypassing cache...');
       _productCache.remove(id);
     }
 
@@ -131,7 +119,6 @@ class ProductService extends ChangeNotifier {
       }
     } catch (e) {
       _error = e.toString();
-      debugPrint('Error fetching product details: $e');
     } finally {
       _isLoading = false;
       notifyListeners();

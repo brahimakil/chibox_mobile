@@ -79,11 +79,9 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
             if (airCost <= seaCost) {
               _selectedMethod = 'air';
               autoSelectedMethod = 'air';
-              debugPrint('✈️ Auto-selected AIR shipping (\$${airCost.toStringAsFixed(2)} vs Sea \$${seaCost.toStringAsFixed(2)})');
             } else {
               _selectedMethod = 'sea';
               autoSelectedMethod = 'sea';
-              debugPrint('🚢 Auto-selected SEA shipping (\$${seaCost.toStringAsFixed(2)} vs Air \$${airCost.toStringAsFixed(2)})');
             }
           }
         });
@@ -117,12 +115,10 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
   void _startPolling() {
     if (_isPolling) return;
     _isPolling = true;
-    debugPrint('🔄 Starting shipping cost polling...');
     
     // Poll every 3 seconds
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       if (mounted && _comparison?.hasProcessingItems == true) {
-        debugPrint('🔄 Polling for shipping costs update...');
         _loadShippingCosts(isPolling: true);
       } else {
         _stopPolling();
@@ -132,7 +128,6 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
 
   void _stopPolling() {
     if (!_isPolling) return;
-    debugPrint('✅ Stopping shipping cost polling');
     _pollingTimer?.cancel();
     _pollingTimer = null;
     _isPolling = false;
@@ -141,7 +136,6 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
   /// Trigger AI queue processor to process remaining items
   void _triggerQueueProcessor() {
     if (!mounted) return;
-    debugPrint('🚀 Triggering AI queue processor from shipping selection polling...');
     try {
       final api = context.read<ApiService>();
       // Fire-and-forget
@@ -150,14 +144,10 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
         queryParams: {'secret': ApiConstants.shippingQueueSecret},
       ).then((response) {
         if (response.success) {
-          final data = response.data;
-          debugPrint('✅ Queue processor: processed=${data?['processed']}, remaining=${data?['remaining']}');
         }
       }).catchError((e) {
-        debugPrint('⚠️ Queue processor error: $e');
       });
     } catch (e) {
-      debugPrint('⚠️ Could not trigger queue processor: $e');
     }
   }
 
@@ -176,19 +166,12 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
   
   /// Refetch cart data with shipping method to calculate correct tax
   Future<void> _refetchCartWithTax(String method) async {
-    debugPrint('🔄 TAX: Refetching cart with shipping_method=$method');
     final cartService = context.read<CartService>();
     await cartService.fetchCart(silent: true, shippingMethod: method);
     
     // Debug: Log what tax we got back
     if (cartService.cartData != null) {
-      debugPrint('📊 TAX: Cart total_tax=${cartService.cartData!.totalTax}');
-      debugPrint('📊 TAX: Item count=${cartService.items.length}');
-      for (var item in cartService.items) {
-        debugPrint('   TAX: id=${item.id}, product=${item.productId}, categoryId=${item.categoryId}, qty=${item.quantity}, taxAmount=${item.taxAmount}');
-      }
     } else {
-      debugPrint('❌ TAX: cartData is null after fetch!');
     }
   }
 
@@ -205,8 +188,108 @@ class _ShippingSelectionScreenState extends State<ShippingSelectionScreen> {
            !_comparison!.hasProcessingItems;
   }
 
-  void _proceedToCheckout() {
+  void _proceedToCheckout() async {
     if (!_canProceedToCheckout) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Iconsax.info_circle,
+                    color: Colors.amber,
+                    size: 40,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Payment Information',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'You will now pay for the product prices only.\n\n'
+                  'Once the admin reviews and confirms your shipping cost, '
+                  'you will receive a notification to pay the shipping fee separately.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.grey[300] : Colors.grey[700],
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.red.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: const Text(
+                    'NO REFUND IS AVAILABLE',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.red,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(ctx).primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'OK, I Understand',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
 
     // Use push instead of pushReplacement so user can go back to shipping selection
     Navigator.push(

@@ -2,7 +2,7 @@ name: chihelo_frontend
 description: "Chibox - Your Premium Shopping Experience"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.2+6
 
 environment:
   sdk: '>=3.4.1 <4.0.0'
@@ -68,6 +68,10 @@ dependencies:
   
   # WebView - Payment Integration
   webview_flutter: ^4.8.0
+  
+  # Sharing & URL launching
+  url_launcher: ^6.2.5
+  share_plus: ^7.2.2
   
   # ML/AI - Object Detection
   google_mlkit_object_detection: ^0.15.0

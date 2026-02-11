@@ -340,7 +340,6 @@ class _FloatingHeaderState extends State<FloatingHeader> {
           _notifySearchStateChanged();
         }
       } catch (e) {
-        debugPrint('Error searching categories: $e');
         if (mounted) {
           setState(() {
             _categoryResults = [];
@@ -762,7 +761,6 @@ class _FloatingHeaderState extends State<FloatingHeader> {
             imagePath = compressedFile.path;
           }
         } catch (e) {
-          debugPrint('⚠️ Failed to normalize image: $e');
         }
 
         // Navigate to search results
@@ -779,7 +777,6 @@ class _FloatingHeaderState extends State<FloatingHeader> {
         }
       }
     } catch (e) {
-      debugPrint('Error picking image: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error picking image: $e')),
@@ -818,7 +815,6 @@ class _FloatingHeaderState extends State<FloatingHeader> {
       );
       return croppedFile?.path;
     } catch (e) {
-      debugPrint('Error cropping image: $e');
       return null;
     }
   }
@@ -830,7 +826,6 @@ class _FloatingHeaderState extends State<FloatingHeader> {
     try {
       String finalPath = imagePath;
       final originalSize = File(imagePath).lengthSync();
-      debugPrint('🔍 Original image size: $originalSize bytes');
       
       // Check if file is already JPEG
       final isJpeg = imagePath.toLowerCase().endsWith('.jpg') || 
@@ -839,7 +834,6 @@ class _FloatingHeaderState extends State<FloatingHeader> {
       // Always convert to JPEG if not already, or compress if over 900KB
       // This ensures HEIC, PNG, WEBP etc. are converted for TMAPI compatibility
       if (!isJpeg || originalSize > 900000) {
-        debugPrint('🔄 Converting/compressing image to JPEG...');
         try {
           final tempDir = await getTemporaryDirectory();
           final compressPath = '${tempDir.path}/upload_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -859,7 +853,6 @@ class _FloatingHeaderState extends State<FloatingHeader> {
           
           if (compressed != null) {
             var compressedSize = File(compressed.path).lengthSync();
-            debugPrint('📏 Processed to: $compressedSize bytes (quality: $quality)');
             
             // If still over 900KB, compress more
             if (compressedSize > 900000) {
@@ -876,7 +869,6 @@ class _FloatingHeaderState extends State<FloatingHeader> {
               );
               if (compressed != null) {
                 compressedSize = File(compressed.path).lengthSync();
-                debugPrint('📏 Re-compressed to: $compressedSize bytes');
               }
             }
             
@@ -885,13 +877,8 @@ class _FloatingHeaderState extends State<FloatingHeader> {
             }
           }
         } catch (e) {
-          debugPrint('⚠️ Image processing failed: $e');
         }
       }
-      
-      debugPrint('🔍 Navigating with image: $finalPath');
-      debugPrint('📁 File exists: ${File(finalPath).existsSync()}');
-      debugPrint('📏 File size: ${File(finalPath).lengthSync()} bytes');
       
       if (!mounted) return;
 
@@ -906,7 +893,6 @@ class _FloatingHeaderState extends State<FloatingHeader> {
         ),
       );
     } catch (e) {
-      debugPrint('❌ Image search error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error searching image: $e')),
@@ -1315,7 +1301,6 @@ class _ImagePreviewScreenState extends State<_ImagePreviewScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Error loading image bytes: $e');
     }
   }
 
@@ -1368,7 +1353,6 @@ class _ImagePreviewScreenState extends State<_ImagePreviewScreen> {
                         _imageBytes!,
                         fit: BoxFit.contain,
                         errorBuilder: (context, error, stackTrace) {
-                          debugPrint('Image.memory error: $error');
                           return _buildErrorWidget();
                         },
                       )
@@ -1376,7 +1360,6 @@ class _ImagePreviewScreenState extends State<_ImagePreviewScreen> {
                         File(_currentPath),
                         fit: BoxFit.contain,
                         errorBuilder: (context, error, stackTrace) {
-                          debugPrint('Image.file error: $error');
                           return _buildErrorWidget();
                         },
                       ),

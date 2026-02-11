@@ -46,22 +46,17 @@ class CartService extends ChangeNotifier {
     _queueProcessorDebounce?.cancel();
     _queueProcessorDebounce = Timer(const Duration(seconds: 2), () async {
       try {
-        debugPrint('🚀 Triggering AI queue processor...');
         // Fire-and-forget - don't await, don't care about result
         _api.get(
           ApiConstants.shippingQueueProcess,
           queryParams: {'secret': ApiConstants.shippingQueueSecret},
         ).then((response) {
           if (response.success) {
-            debugPrint('✅ Queue processor triggered: ${response.data}');
           } else {
-            debugPrint('⚠️ Queue processor returned: ${response.message}');
           }
         }).catchError((e) {
-          debugPrint('⚠️ Queue processor error (non-blocking): $e');
         });
       } catch (e) {
-        debugPrint('⚠️ Failed to trigger queue processor: $e');
       }
     });
   }
@@ -98,9 +93,7 @@ class CartService extends ChangeNotifier {
       final queryParams = <String, dynamic>{};
       if (shippingMethod != null) {
         queryParams['shipping_method'] = shippingMethod;
-        debugPrint('🛒 CART API: Fetching with shipping_method=$shippingMethod');
       } else {
-        debugPrint('🛒 CART API: Fetching WITHOUT shipping_method (tax will be 0)');
       }
       
       final response = await _api.get(
@@ -112,11 +105,9 @@ class CartService extends ChangeNotifier {
         _cartData = CartData.fromJson(response.data ?? {});
       } else {
         _error = response.message;
-        debugPrint('⚠️ Failed to fetch cart: $_error');
       }
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Error fetching cart: $e');
     } finally {
       if (!silent) {
         _isLoading = false;
@@ -157,18 +148,14 @@ class CartService extends ChangeNotifier {
 
       if (!response.success) {
         final errorMessage = response.message ?? '';
-        debugPrint('⚠️ Add to cart failed: $errorMessage (status: ${response.statusCode})');
         
         // Check if it's a "Variant not found" error - this means the variant IDs are stale
         // and the product needs to be re-fetched by the UI
         if (errorMessage.toLowerCase().contains('variant not found')) {
-          debugPrint('⚠️ Variant ID is stale - product needs refresh');
           _error = 'VARIANT_STALE';
           notifyListeners();
           return false;
         }
-        
-        debugPrint('⚠️ Attempting to import product details...');
         
         try {
           // Trigger import by fetching details
@@ -187,8 +174,6 @@ class CartService extends ChangeNotifier {
             }
 
             if (localId != null) {
-              debugPrint('🔄 Imported product. Swapping Tampi ID $productId for Local ID $localId');
-              
               // Notify listeners about the ID change so UI can update
               _idUpdateController.add({'old': productId, 'new': localId});
 
@@ -197,7 +182,6 @@ class CartService extends ChangeNotifier {
               
               // If still failing with variant error, signal stale
               if (!response.success && (response.message ?? '').toLowerCase().contains('variant not found')) {
-                debugPrint('⚠️ Variant ID still stale after product import');
                 _error = 'VARIANT_STALE';
                 notifyListeners();
                 return false;
@@ -208,12 +192,10 @@ class CartService extends ChangeNotifier {
             }
           }
         } catch (e) {
-          debugPrint('❌ Failed to import product during add to cart retry: $e');
         }
       }
 
       if (response.success) {
-        debugPrint('✅ Added to cart: Product $productId');
         // Refresh cart data silently
         await fetchCart(silent: true);
         
@@ -223,12 +205,10 @@ class CartService extends ChangeNotifier {
         return true;
       } else {
         _error = response.message;
-        debugPrint('⚠️ Failed to add to cart: $_error');
         notifyListeners();
       }
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Error adding to cart: $e');
       notifyListeners();
     }
 
@@ -273,7 +253,6 @@ class CartService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('🔄 Updating cart item $cartItemId to quantity $quantity');
       final response = await _api.put(
         '${ApiConstants.updateCartItem}?id=$cartItemId',
         body: {'quantity': quantity},
@@ -287,7 +266,6 @@ class CartService extends ChangeNotifier {
         // Revert on failure
         _cartData!.items[index] = oldItem;
         _error = response.message;
-        debugPrint('⚠️ Failed to update cart item: $_error');
         _isUpdating = false;
         notifyListeners();
       }
@@ -295,7 +273,6 @@ class CartService extends ChangeNotifier {
       // Revert on error
       _cartData!.items[index] = oldItem;
       _error = e.toString();
-      debugPrint('❌ Error updating cart item: $e');
       _isUpdating = false;
       notifyListeners();
     }
@@ -319,7 +296,6 @@ class CartService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('🗑️ Removing cart item $cartItemId');
       final response = await _api.delete(
         '${ApiConstants.removeFromCart}?id=$cartItemId',
       );
@@ -334,7 +310,6 @@ class CartService extends ChangeNotifier {
             (response.message != null && 
             (response.message!.toLowerCase().contains('not found') || 
              response.message!.toLowerCase().contains('does not exist')))) {
-          debugPrint('⚠️ Item already removed from server (404). Keeping local removal.');
           await fetchCart(silent: true);
           return true;
         }
@@ -342,7 +317,6 @@ class CartService extends ChangeNotifier {
         // Revert on failure
         _cartData!.items.insert(index, oldItem);
         _error = response.message;
-        debugPrint('⚠️ Failed to remove from cart: $_error');
         _isUpdating = false;
         notifyListeners();
       }
@@ -350,7 +324,6 @@ class CartService extends ChangeNotifier {
       // Revert on error
       _cartData!.items.insert(index, oldItem);
       _error = e.toString();
-      debugPrint('❌ Error removing from cart: $e');
       _isUpdating = false;
       notifyListeners();
     }
@@ -370,12 +343,10 @@ class CartService extends ChangeNotifier {
         return true;
       } else {
         _error = response.message;
-        debugPrint('⚠️ Failed to clear cart: $_error');
         notifyListeners();
       }
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Error clearing cart: $e');
       notifyListeners();
     }
     

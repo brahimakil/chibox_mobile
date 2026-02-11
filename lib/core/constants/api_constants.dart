@@ -102,6 +102,12 @@ class ApiConstants {
   static const String shippingQueueProcess = '$apiPrefix-shipping-queue/process';
   static const String shippingQueueSecret = 'chihelo_queue_secret_2024_change_me';
 
+  // ============== INVOICE ENDPOINTS ==============
+  static const String getInvoices = '$apiPrefix-invoice/list';
+  static const String getInvoiceDetail = '$apiPrefix-invoice/detail';
+  static const String viewInvoice = '$apiPrefix-invoice/view';
+  static const String getOrderInvoices = '$apiPrefix-invoice/order-invoices';
+
   // ============== TIMEOUTS ==============
   static const Duration connectionTimeout = Duration(seconds: 90);
   static const Duration receiveTimeout = Duration(seconds: 90);

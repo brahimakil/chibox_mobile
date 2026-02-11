@@ -103,11 +103,9 @@ class _CartScreenState extends State<CartScreen> {
   
   /// Fetch shipping costs for all cart items to display on each card
   Future<void> _fetchShippingCosts({bool isPolling = false}) async {
-    debugPrint('📦 _fetchShippingCosts called, mounted=$mounted, isPolling=$isPolling');
     if (!mounted) return;
     
     final cartService = Provider.of<CartService>(context, listen: false);
-    debugPrint('   Cart items: ${cartService.items.length}');
     if (cartService.items.isEmpty) return;
     
     // Only show loading indicator for initial fetch, not polling
@@ -118,27 +116,16 @@ class _CartScreenState extends State<CartScreen> {
     try {
       final shippingService = Provider.of<ShippingService>(context, listen: false);
       final cartItemIds = cartService.items.map((i) => i.id).toList();
-      debugPrint('   Fetching shipping for cart item IDs: $cartItemIds');
       
       final comparison = await shippingService.compareShippingMethods(
         cartItemIds: cartItemIds,
       );
       
-      debugPrint('   ✅ Got comparison, air items: ${comparison.air.items.length}, sea items: ${comparison.sea.items.length}');
-      debugPrint('   📊 hasProcessingItems: ${comparison.hasProcessingItems}, processingIds: ${comparison.processingProductIds}');
-      
-      // Log individual item processing status
-      for (final item in comparison.air.items) {
-        debugPrint('   📦 Air item ${item.productId}: isAiProcessing=${item.isAiProcessing}, status=${item.status}');
-      }
-      
       if (mounted) {
-        debugPrint('   🔄 Calling setState with comparison');
         setState(() {
           _shippingComparison = comparison;
           _isLoadingShipping = false;
         });
-        debugPrint('   ✅ setState completed, _shippingComparison is now ${_shippingComparison != null}');
         
         // Start or stop polling based on processing status
         if (comparison.hasProcessingItems) {
@@ -153,7 +140,6 @@ class _CartScreenState extends State<CartScreen> {
         }
       }
     } catch (e) {
-      debugPrint('❌ Error fetching shipping costs: $e');
       if (mounted) {
         setState(() => _isLoadingShipping = false);
       }
@@ -164,12 +150,10 @@ class _CartScreenState extends State<CartScreen> {
   void _startPolling() {
     if (_isPolling) return;
     _isPolling = true;
-    debugPrint('🔄 Starting shipping cost polling in cart...');
     
     // Poll every 3 seconds
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       if (mounted && _shippingComparison?.hasProcessingItems == true) {
-        debugPrint('🔄 Polling for shipping costs update...');
         _fetchShippingCosts(isPolling: true);
       } else {
         // Polling done - force final refresh to show updated data
@@ -181,14 +165,12 @@ class _CartScreenState extends State<CartScreen> {
   /// Stop polling
   void _stopPolling({bool refresh = false}) {
     if (!_isPolling && !refresh) return;
-    debugPrint('✅ Stopping shipping cost polling in cart');
     _pollingTimer?.cancel();
     _pollingTimer = null;
     _isPolling = false;
     
     // Force a final refresh to ensure UI shows latest data
     if (refresh && mounted) {
-      debugPrint('🔄 Final refresh after polling stopped');
       _fetchShippingCosts();
     }
   }
@@ -197,7 +179,6 @@ class _CartScreenState extends State<CartScreen> {
   /// This is called during polling when there are still processing items
   void _triggerQueueProcessor() {
     if (!mounted) return;
-    debugPrint('🚀 Triggering AI queue processor from cart polling...');
     try {
       final api = Provider.of<ApiService>(context, listen: false);
       // Fire-and-forget - don't await, don't block polling
@@ -207,13 +188,10 @@ class _CartScreenState extends State<CartScreen> {
       ).then((response) {
         if (response.success) {
           final data = response.data;
-          debugPrint('✅ Queue processor: processed=${data?['processed']}, remaining=${data?['remaining']}');
         }
       }).catchError((e) {
-        debugPrint('⚠️ Queue processor error: $e');
       });
     } catch (e) {
-      debugPrint('⚠️ Could not trigger queue processor: $e');
     }
   }
 
@@ -266,8 +244,6 @@ class _CartScreenState extends State<CartScreen> {
   /// Build shipping cost row for a cart item
   /// Shows debug info: weight, dimensions, AI confidence, prices
   Widget _buildShippingCostRow(int productId, bool isDark) {
-    debugPrint('🏗️ Building shipping row for product $productId, comparison=${_shippingComparison != null}, loading=$_isLoadingShipping');
-    
     if (_shippingComparison == null) {
       if (_isLoadingShipping) {
         return Padding(
@@ -293,20 +269,16 @@ class _CartScreenState extends State<CartScreen> {
           ),
         );
       }
-      debugPrint('   ❌ No shipping comparison and not loading');
       return const SizedBox.shrink();
     }
     
     // Get debug info for this product
     final debugInfo = _shippingComparison!.getDebugInfoForProduct(productId);
     
-    debugPrint('   📊 Debug info for $productId: isProcessing=${debugInfo?.isProcessing}, weight=${debugInfo?.weightKg}');
-    
     // If debugInfo is null, the product wasn't in the comparison response
     // This can happen if the cart was updated but shipping wasn't refreshed
     // Auto-refresh shipping data
     if (debugInfo == null) {
-      debugPrint('   ⚠️ No debug info for $productId - auto-refreshing shipping');
       // Schedule a refresh if not already loading
       if (!_isLoadingShipping) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -350,7 +322,6 @@ class _CartScreenState extends State<CartScreen> {
     
     // Check if AI is still processing (only if we have debug info AND it's actually processing)
     if (debugInfo.isProcessing) {
-      debugPrint('   ⏳ Showing AI Processing for $productId (isProcessing=${debugInfo.isProcessing})');
       return Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Container(
@@ -621,7 +592,6 @@ class _CartScreenState extends State<CartScreen> {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) {
                   setState(() {
-                    debugPrint('✨ Auto-selecting ${newItems.length} new items');
                     _selectedItemIds.addAll(newItems);
                     _knownItemIds = currentItemIds;
                     // If we are auto-selecting new items, we shouldn't block future auto-selections

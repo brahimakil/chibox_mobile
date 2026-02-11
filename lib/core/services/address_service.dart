@@ -52,7 +52,6 @@ class AddressService extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('Error fetching countries: $e');
     }
   }
 
@@ -70,7 +69,6 @@ class AddressService extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('Error fetching cities: $e');
     }
   }
 
@@ -148,7 +146,6 @@ class AddressService extends ChangeNotifier {
       }
       return false;
     } catch (e) {
-      debugPrint('Error setting default address: $e');
       return false;
     }
   }
@@ -168,7 +165,6 @@ class AddressService extends ChangeNotifier {
       }
       return false;
     } catch (e) {
-      debugPrint('Error deleting address: $e');
       return false;
     }
   }

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart';
 
 /// Cache Service for storing and retrieving data with TTL
 class CacheService {
@@ -26,10 +25,7 @@ class CacheService {
       
       await prefs.setString(_homeDataKey, jsonString);
       await prefs.setInt(_homeDataTimestampKey, timestamp);
-      
-      debugPrint('✅ Home data cached successfully');
     } catch (e) {
-      debugPrint('❌ Error caching home data: $e');
     }
   }
 
@@ -41,7 +37,6 @@ class CacheService {
       final timestamp = prefs.getInt(_homeDataTimestampKey);
 
       if (jsonString == null || timestamp == null) {
-        debugPrint('⚠️ No cached home data found');
         return null;
       }
 
@@ -50,14 +45,11 @@ class CacheService {
       final age = now.difference(cachedTime);
 
       if (age > cacheDuration) {
-        debugPrint('⚠️ Cache expired (age: ${age.inMinutes}m ${age.inSeconds % 60}s)');
         return null;
       }
 
-      debugPrint('✅ Using cached data (age: ${age.inMinutes}m ${age.inSeconds % 60}s)');
       return jsonDecode(jsonString) as Map<String, dynamic>;
     } catch (e) {
-      debugPrint('❌ Error reading cached home data: $e');
       return null;
     }
   }
@@ -71,10 +63,7 @@ class CacheService {
       
       await prefs.setString(_categoriesKey, jsonString);
       await prefs.setInt(_categoriesTimestampKey, timestamp);
-      
-      debugPrint('✅ Categories cached successfully');
     } catch (e) {
-      debugPrint('❌ Error caching categories: $e');
     }
   }
 
@@ -100,7 +89,6 @@ class CacheService {
       final decoded = jsonDecode(jsonString) as List;
       return decoded.map((e) => e as Map<String, dynamic>).toList();
     } catch (e) {
-      debugPrint('❌ Error reading cached categories: $e');
       return null;
     }
   }
@@ -119,10 +107,7 @@ class CacheService {
       
       await prefs.setString(key, jsonString);
       await prefs.setInt(timestampKey, timestamp);
-      
-      debugPrint('✅ Category $categoryId products cached: ${products.length} items');
     } catch (e) {
-      debugPrint('❌ Error caching category products: $e');
     }
   }
 
@@ -145,15 +130,12 @@ class CacheService {
       final age = now.difference(cachedTime);
 
       if (age > categoryProductsCacheDuration) {
-        debugPrint('⚠️ Category $categoryId cache expired');
         return null;
       }
 
-      debugPrint('✅ Using cached products for category $categoryId (age: ${age.inMinutes}m)');
       final decoded = jsonDecode(jsonString) as List;
       return decoded.map((e) => e as Map<String, dynamic>).toList();
     } catch (e) {
-      debugPrint('❌ Error reading cached category products: $e');
       return null;
     }
   }
@@ -176,10 +158,7 @@ class CacheService {
       
       await prefs.setString(key, jsonString);
       await prefs.setInt(timestampKey, timestamp);
-      
-      debugPrint('✅ Subcategories for $categoryId cached: ${subcategories.length} items');
     } catch (e) {
-      debugPrint('❌ Error caching subcategories: $e');
     }
   }
 
@@ -202,14 +181,11 @@ class CacheService {
       final age = now.difference(cachedTime);
 
       if (age > subcategoriesCacheDuration) {
-        debugPrint('⚠️ Subcategories for $categoryId cache expired');
         return null;
       }
 
-      debugPrint('✅ Using cached subcategories for $categoryId (age: ${age.inMinutes}m)');
       return jsonDecode(jsonString) as Map<String, dynamic>;
     } catch (e) {
-      debugPrint('❌ Error reading cached subcategories: $e');
       return null;
     }
   }
@@ -226,7 +202,6 @@ class CacheService {
         await cacheSubcategories(categoryId, newSubcategories, pagination);
       }
     } catch (e) {
-      debugPrint('❌ Error appending subcategories to cache: $e');
     }
   }
 
@@ -249,10 +224,7 @@ class CacheService {
           await prefs.remove(key);
         }
       }
-      
-      debugPrint('🗑️ Cache cleared');
     } catch (e) {
-      debugPrint('❌ Error clearing cache: $e');
     }
   }
 
@@ -268,9 +240,7 @@ class CacheService {
           count++;
         }
       }
-      debugPrint('🗑️ Cleared $count category product cache entries');
     } catch (e) {
-      debugPrint('❌ Error clearing category products cache: $e');
     }
   }
 
@@ -280,10 +250,7 @@ class CacheService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_homeDataKey);
       await prefs.remove(_homeDataTimestampKey);
-      
-      debugPrint('🗑️ Home data cache cleared');
     } catch (e) {
-      debugPrint('❌ Error clearing home data cache: $e');
     }
   }
 

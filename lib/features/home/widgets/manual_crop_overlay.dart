@@ -284,8 +284,6 @@ class _ManualCropOverlayState extends State<ManualCropOverlay> with SingleTicker
       final encodedBytes = img.encodeJpg(croppedImage, quality: 90);
       await File(outputPath).writeAsBytes(encodedBytes);
       
-      debugPrint('✅ Manual crop complete: ${cropWidth}x$cropHeight -> $outputPath');
-      
       // Return the actual pixel rect for display purposes
       final actualCropRect = Rect.fromLTWH(
         cropLeft.toDouble(),
@@ -296,7 +294,6 @@ class _ManualCropOverlayState extends State<ManualCropOverlay> with SingleTicker
       
       widget.onCropComplete(outputPath, actualCropRect);
     } catch (e) {
-      debugPrint('❌ Manual crop failed: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to crop image: $e'), backgroundColor: Colors.red),
       );
