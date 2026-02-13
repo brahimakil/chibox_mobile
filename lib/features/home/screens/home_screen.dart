@@ -75,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
   
   void _onCategorySelectionChanged() {
+    if (!mounted) return;
     final navProvider = context.read<NavigationProvider>();
     navProvider.setHomeCategorySelected(_selectedCategoryNotifier.value != null);
   }
@@ -92,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
   
   void _onNavigationChange() {
+    if (!mounted) return;
     final navProvider = context.read<NavigationProvider>();
     if (navProvider.consumeResetHomeFlag()) {
       _resetHome();

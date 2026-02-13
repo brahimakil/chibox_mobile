@@ -395,13 +395,16 @@ class OrderDetails {
     switch (shippingMethod) {
       case 'air': return 'Air Freight ✈️';
       case 'sea': return 'Sea Freight 🚢';
+      case 'both': return 'Air & Sea ✈️🚢';
       default: return 'Standard';
     }
   }
 
   /// Check if order can be cancelled
   bool get canCancel =>
-      statusId == OrderStatus.pending || statusId == OrderStatus.confirmed;
+      statusId == OrderStatus.pending ||
+      statusId == OrderStatus.confirmed ||
+      statusId == OrderStatus.processing;
   
   /// Check if shipping payment is pending review (Admin hasn't confirmed yet)
   bool get isShippingPendingReview => shippingStatus == ShippingStatus.pendingCalculation;
